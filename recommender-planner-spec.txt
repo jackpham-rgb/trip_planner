@@ -1,0 +1,244 @@
+================================================================================
+PERSONAL RECOMMENDER + TRIP PLANNER  (applied-algorithms portfolio project)
+"a personal tool that USES the concepts/formulas I once faced"
+================================================================================
+Dual purpose: a genuinely useful personal tool (suggest the next activity /
+plan a trip) AND a portfolio artifact that demonstrates, in real code, the
+probability/optimization/RL ideas from EECS126 / EECS127 / EECS189 and your
+TACC multi-agent research. Software-only, no hardware, no Cory.
+
+HONESTY FRAMING
+  A single-user personal recommender/planner. It shows applied Bayesian bandits +
+  constrained optimization on a real problem. It is not a production large-scale
+  recsys (no billions of users, no collaborative filtering) — and that's the
+  point: for ONE user, contextual bandits + optimization are exactly right.
+
+
+================================================================================
+0. THE RIGHT MENTAL MODEL: IT'S TWO PROBLEMS + A PIPELINE
+================================================================================
+People say "recommendation algorithm" as if it's one thing. It's two, wired
+together by a classic retrieval->rank->plan->feedback pipeline:
+
+  (1) CANDIDATE GENERATION (retrieval): from all POIs/activities, cheaply filter
+      to a relevant, feasible shortlist (geo radius, category, "open now",
+      budget). Similarity search over item embeddings, or plain filters.
+  (2) SCORING: give each candidate a value/utility for THIS context. This is the
+      LEARNED part (the bandit / reward model).
+  (3) SELECTION:
+        - single "what should I do next?"  -> the bandit picks one (explore/exploit)
+        - "plan my whole day/trip"          -> feed scores as PRIZES into an
+          itinerary OPTIMIZER (this is planning, not recommendation)
+  (4) FEEDBACK: you act (went / skipped / rating / dwell time) -> update the
+      model -> the loop closes and it gets better.
+
+Sub-problem A = step 2/3-single (contextual bandit). Sub-problem B = step
+3-trip (constrained optimization). Keep them separate; they're different math.
+
+
+================================================================================
+1. SUB-PROBLEM A — "NEXT BEST ACTIVITY": CONTEXTUAL BANDIT
+================================================================================
+WHY A BANDIT (not plain supervised learning):
+  You only observe reward for the item you CHOSE (bandit / partial feedback), and
+  you must EXPLORE to learn about un-tried items while EXPLOITING known-good ones.
+  Supervised learning assumes labeled data for all options; you don't have that.
+
+FORMALIZATION (contextual bandit):
+  At step t: observe context x_t (features: hour, day, weather, location,
+  budget-left, mood, recent history, item features). Choose action a_t (an
+  activity). Receive reward r_t (feedback). Goal: maximize sum_t r_t, i.e.
+  minimize REGRET = sum_t (r*_t - r_{a_t}), where r*_t is the best possible.
+
+THE ALGORITHMS (baseline -> best), with formulas:
+
+  epsilon-greedy (baseline):
+    with prob eps pick a random action; else pick argmax_a  Q_hat(x,a).
+    Simple, but wastes exploration uniformly and ignores uncertainty. Use a
+    DECAYING eps_t (e.g. eps_t = min(1, c/t)) or you keep exploring forever.
+
+  LinUCB (optimism under uncertainty; contextual UCB):
+    Assume reward is ~linear in context per arm:  E[r | x,a] = x^T theta_a.
+    Ridge-regress theta_a online:
+        A_a = lambda*I + sum x x^T ,   b_a = sum r*x ,   theta_hat_a = A_a^{-1} b_a
+    Pick the arm maximizing (predicted + confidence bonus):
+        a_t = argmax_a  x^T theta_hat_a  +  alpha * sqrt( x^T A_a^{-1} x )
+    The sqrt term is the 1-sigma uncertainty; alpha tunes exploration.
+    Regret ~ O~(sqrt(d T)). Deterministic, tunable, well-understood.
+
+  Thompson Sampling (Bayesian — recommended; EECS126 in the flesh):
+    Keep a POSTERIOR over theta_a. Each step SAMPLE theta_tilde_a ~ posterior,
+    then act greedily on the sample:  a_t = argmax_a x^T theta_tilde_a.
+    Linear-Gaussian conjugate case (Bayesian linear regression):
+        posterior:  theta_a ~ N( theta_hat_a ,  sigma^2 A_a^{-1} )
+        update A_a, b_a exactly as LinUCB; sample from the Gaussian.
+    Exploration falls out of posterior UNCERTAINTY automatically (wide posterior
+    -> more exploration). Usually matches/beats UCB empirically and is trivial to
+    code. This IS Bayesian inference + conjugate priors + MAP/MMSE from EECS126.
+
+  THE REWARD MODEL r:
+    Define reward carefully — it's the most important design choice.
+      explicit: thumbs up/down, 1-5 rating (sparse but clean)
+      implicit: went / skipped / dwell time / revisit (dense but BIASED)
+    Model E[r|x,a] with linear (above) or logistic regression (EECS189) on
+    context+item features. Reward shaping/normalization matters.
+
+  COLD START (no data yet):
+    Use CONTENT features (item tags -> embedding) so a brand-new item gets a
+    reasonable prior via its features. This is exactly why CONTEXTUAL (feature-
+    based) bandits beat per-arm bandits: they GENERALIZE across items through a
+    shared feature space. Hybrid: content prior + bandit exploration.
+
+  NON-STATIONARITY (a real limit):
+    Your taste drifts (seasons, mood, novelty). Vanilla bandits assume a fixed
+    theta. Fix with a sliding window or DISCOUNTING (decay old data: A_a <- gamma*A_a
+    + x x^T). Otherwise it over-commits to stale preferences.
+
+
+================================================================================
+2. SUB-PROBLEM B — "PLAN A TRIP": CONSTRAINED OPTIMIZATION (NOT RECOMMENDATION)
+================================================================================
+Given candidate POIs, each with a value v_i (the bandit's score), a visit/dwell
+time, travel times t_ij between them, and a time budget T (+ maybe money budget),
+CHOOSE A SUBSET AND AN ORDER to maximize total value. This is planning.
+
+THIS IS THE ORIENTEERING PROBLEM (a.k.a. prize-collecting / TSP-with-profits),
+and with opening hours it's TSP-with-TIME-WINDOWS (TSPTW). NP-hard.
+
+MILP FORMULATION (EECS127 / Boyd / cvxpy territory):
+    variables: y_i in {0,1} (visit POI i),  x_ij in {0,1} (travel i->j)
+    maximize   sum_i v_i * y_i
+    subject to
+       flow conservation:  sum_j x_ij = sum_j x_ji = y_i   for each i
+       start/end at depot (home/hotel)
+       time budget:  sum_ij (t_ij + dwell_j) x_ij  <=  T
+       subtour elimination (MTZ variables, or lazy constraints)
+       (optional) money budget, time windows [open_i, close_i], category caps
+  Solve with a MILP solver: OR-Tools routing (best practical), PuLP/Gurobi.
+  cvxpy expresses the LP RELAXATION (bounds / rounding) but true MILP needs a
+  branch-and-bound solver.
+
+HEURISTICS (for speed / large instances / real-time replanning):
+    greedy: repeatedly add the POI with best value/time ratio that still fits;
+    then local search: 2-opt / or-opt to shorten the route;
+    metaheuristics: simulated annealing, genetic algorithm, GRASP, ant-colony.
+  For a personal tool these are usually enough and are instant.
+
+TIES: your LP task-allocation + CBS pathfinding research is EXACTLY this family
+(routing under constraints); the MILP is the cousin of your LP, and CBS is
+collision-free routing.
+
+UNCERTAINTY (a limit): travel/wait times are random. Options:
+    - robust / CHANCE-CONSTRAINED optimization (cvxpy supports chance constraints):
+      keep P(over budget) <= epsilon;
+    - or just REPLAN when reality diverges (re-solve with updated times).
+
+
+================================================================================
+3. WIRING A AND B TOGETHER (the whole system)
+================================================================================
+  retrieval  ->  bandit scores every candidate (v_i)  ->
+     if "one suggestion":  bandit picks argmax (with exploration)
+     if "plan a trip":     orienteering optimizer uses v_i as prizes, returns an
+                           ordered, time-feasible itinerary
+  ->  you act  ->  reward observed  ->  bandit posterior updated  ->  better next time.
+This is the standard retrieval -> ranking -> re-ranking/planning recsys pipeline
+plus ONLINE learning. Add a DIVERSITY term (submodular / DPP) in ranking so it
+doesn't tunnel into one category (see filter-bubble limit below).
+
+
+================================================================================
+4. WHEN TO ESCALATE TO RL / MDP (and why usually NOT)
+================================================================================
+Go to a full MDP / RL only if the value of an action depends on FUTURE STATE and
+you optimize long-horizon, DELAYED reward — e.g. "doing X now unlocks a better Y
+tomorrow," multi-day trips with evolving state, energy/mood dynamics.
+  Formalize: state s (context+history), action a, transition P(s'|s,a), reward r,
+  maximize E[sum gamma^t r_t]. Solve with value/policy iteration (small) or
+  deep RL (large) — this is your MDP/MADDPG research tier.
+WHY USUALLY NOT: RL is data-hungry, unstable, and hard to evaluate. A contextual
+bandit + REPLANNING approximates most of the benefit with far less data. Reach
+for RL only when sequential coupling is real and you have data (or a simulator).
+Offline RL if you only have logged history.
+
+
+================================================================================
+5. LIMITATIONS / PITFALLS (the honest list — put in the writeup)
+================================================================================
+  1. COLD START: no data at first -> lean on content features + priors.
+  2. REWARD DEFINITION: implicit feedback is biased (exposure/position bias);
+     explicit feedback is sparse. Garbage reward -> garbage policy.
+  3. NON-STATIONARITY: taste drifts; need decay/windowing.
+  4. FEEDBACK LOOP / FILTER BUBBLE: a greedy bandit narrows suggestions; enforce
+     exploration + DIVERSITY (submodular/DPP) or you only ever see the same 3 cafes.
+  5. SINGLE USER (personal tool): collaborative filtering is impossible (no other
+     users) -> content + contextual bandit is the correct choice, not a limitation.
+  6. COMBINATORIAL BLOWUP: orienteering/TSPTW is NP-hard -> heuristics at scale.
+  7. TRAVEL/WAIT UNCERTAINTY: deterministic plans break -> chance-constrained or replan.
+  8. EVALUATION: recsys is hard to evaluate offline (counterfactual). Off-policy
+     evaluation (IPS / doubly-robust) is the rigorous route; for a personal tool,
+     A/B yourself and track satisfaction over weeks.
+  9. FEATURE ENGINEERING: weather/time/geo features drive quality; wire real APIs.
+ 10. PRIVACY: location/history is sensitive -> keep it on-device (it's personal).
+
+
+================================================================================
+6. CONCEPT / FORMULA -> COURSEWORK MAP  (the "show what I once faced" payload)
+================================================================================
+  EECS126 (probability/estimation):  Thompson posterior = Bayesian inference +
+    conjugate priors; reward model = MMSE/MAP estimation; regret bounds;
+    Markov chains / MDP if you escalate.
+  EECS127 + Boyd + cvxpy:  orienteering as MILP/LP; chance-constrained robust
+    planning; convex relaxations; least squares in the reward model.
+  EECS189 (ML):  the reward/utility model (linear/logistic regression),
+    feature engineering, bias/variance, evaluation.
+  TACC research:  LP task allocation (== the orienteering LP family), MDP
+    formulation, CBS pathfinding (routing under constraints), MADDPG/RL (the
+    escalation tier). This project literally re-uses your research toolkit on a
+    fun, personal problem.
+
+
+================================================================================
+7. PRAGMATIC BUILD ORDER (ship something at every step)
+================================================================================
+  1. RULES + CONTENT SCORING: filter candidates, score by feature similarity to a
+     hand-set profile. Works day 1, zero data. (Retrieval + a cold-start scorer.)
+  2. CONTEXTUAL BANDIT (Thompson Sampling): learn from your feedback; add context
+     features (time/weather/geo). This is the core intelligence.
+  3. ORIENTEERING OPTIMIZER: greedy+2-opt first, then OR-Tools MILP for real
+     itineraries with time budget (+ time windows).
+  4. POLISH: diversity term, non-stationarity decay, a simple UI, real weather/geo
+     APIs, on-device storage.
+  5. (ONLY IF NEEDED) RL/MDP for long-horizon multi-day sequencing.
+
+
+================================================================================
+8. TECH STACK
+================================================================================
+  Python; numpy/scipy; a bandit you WRITE yourself (Thompson linear ~40 lines —
+  do NOT import a black box; writing it is the portfolio point); OR-Tools (routing)
+  or PuLP/cvxpy (LP/MILP); pandas; a weather/geo API; a small UI (Streamlit/CLI/
+  mobile). Optional scikit-learn for the reward model.
+
+
+================================================================================
+9. PORTFOLIO ARTIFACT
+================================================================================
+  A repo + writeup showing: the bandit converging (regret curve), a Thompson-
+  vs-eps-greedy comparison, an example optimized itinerary (map + Gantt of the
+  day), and a docs page mapping each formula to its course/book. Deep-link the
+  "how it works" page. It reads as "I can take Bayesian + optimization theory and
+  ship a working system" — a strong applied-algorithms signal.
+
+
+================================================================================
+10. HOW IT FITS THE PORTFOLIO
+================================================================================
+  A software/algorithms SIDE project (like the robot is the hobby side): it is
+  NOT core IC/RF, so it doesn't dilute the SerDes spine. It DOES prove applied
+  Bayesian + optimization + a link to your RL research — useful breadth for grad
+  apps and for any systems/ML-adjacent conversation. Keep it time-boxed; the
+  SerDes spine still comes first.
+================================================================================
+END — RECOMMENDER + TRIP PLANNER
+================================================================================

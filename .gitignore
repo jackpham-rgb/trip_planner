@@ -1,0 +1,10 @@
+# Personal data -- keep on-device only, never commit (see CLAUDE.md privacy note)
+*.xlsx
+data/*.json
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
