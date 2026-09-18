@@ -1,0 +1,11 @@
+{
+  "name": "Trip Planner",
+  "short_name": "Trip Planner",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f2ea",
+  "theme_color": "#1d5f4a",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -118,10 +118,43 @@ build order calls for.
 
 - Weather/geo API integration (spec's own Step-4 polish item; the workbook
   has `Seasonal?` / `Weather Dep.?` flags but no live data source yet).
-- A GUI (Streamlit or otherwise) -- the CLI (`recsys.cli`) satisfies the
-  spec's "small UI (CLI or Streamlit)" requirement for v1; a Streamlit layer
-  on top of `pipeline.py` would not require touching the core logic.
 - Lat/lon-based real travel times -- most workbook rows don't have
   coordinates yet; `optimizer.py` is written so this is a one-function swap
   later.
 - PageRank, full Markov/MDP -- see "Where the source docs disagreed" above.
+
+## Web app (`src/recsys/api.py`, `web/`)
+
+Web over native Android, for one concrete reason: the bandit and the MILP
+optimizer are already written, tested, and correct in Python. A native
+Android app would mean either rewriting that math in Kotlin (OR-Tools has no
+good on-device story there) or building an Android client that calls a
+Python backend anyway -- so the backend gets built either way, and building
+only the backend (plus a browser frontend) first ships something usable
+without committing to Kotlin/Compose/Room at all. If a native app is wanted
+later, it becomes a thin client against the same `/api/*` endpoints below;
+none of `pipeline.py`, `bandit.py`, or `optimizer.py` would need to change.
+
+- **`api.py`** is a thin FastAPI layer: `POST /api/suggest`, `POST
+  /api/plan`, `POST /api/feedback`, plus `/api/meta` for the frontend's
+  dropdown vocab. Every handler validates a request and calls a
+  `pipeline.py` function that already had test coverage before the API
+  existed -- no scoring/optimization logic lives in `api.py` itself.
+- The option bank loads once at startup (module-level, it only changes when
+  I rebuild it from the workbook); `data/state.json` is reloaded and
+  resaved around each request that changes it, rather than trusted to stay
+  in sync as an in-memory copy. That's more file I/O than a single-user tool
+  strictly needs, but it means the CLI and the web app can be used
+  interchangeably without one clobbering the other's view of state.
+- **`web/`** is a plain HTML/CSS/JS frontend -- no build step, no framework
+  -- because the whole UI is one form and one results list; a bundler would
+  be overhead with nothing to bundle. It includes a `manifest.json` and a
+  minimal `service-worker.js` that caches only the static shell (never
+  `/api/*` responses), which is what makes it installable as a home-screen
+  PWA on a phone.
+- **Not done yet, deliberately:** the server only binds to `127.0.0.1` via
+  `scripts/run_web.py`. Reaching it from a phone means either opening the
+  same machine's LAN address (find it with `ipconfig`/`ifconfig`, then visit
+  `http://<that-ip>:8420` from the phone on the same Wi-Fi) or deploying it
+  somewhere with a stable address -- neither is wired up, since both are
+  "where do I want this running long-term" questions rather than code.

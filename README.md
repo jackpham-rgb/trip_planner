@@ -23,16 +23,28 @@ python scripts/build_option_bank.py --xlsx "Jack-Master-Travel-Database.xlsx"
 
 Re-run this any time the workbook changes. It never touches `data/state.json`.
 
-## Use it
+## Use it — web app
+
+```bash
+python scripts/run_web.py
+```
+
+Open http://localhost:8420. It's installable as a home-screen PWA (works
+offline for the UI shell; suggestions/plans still need the server running).
+On the phone, that means the server needs to be reachable from it — either
+run it on a machine on the same network and open that machine's LAN address,
+or deploy it somewhere later (see `docs/design.md`).
+
+## Use it — CLI
 
 ```bash
 PYTHONPATH=src python -m recsys.cli suggest        # what should I do next?
 PYTHONPATH=src python -m recsys.cli plan --hours 8 # plan a time-boxed outing
 ```
 
-Both ask a few multiple-choice questions, then return a ranked shortlist or
-an ordered itinerary. Recording feedback after `suggest` (did it / would
-repeat / skip) teaches the bandit for next time.
+Both interfaces ask the same few multiple-choice questions and share the same
+`data/state.json` — recording feedback (did it / would repeat / skip) teaches
+the bandit for next time no matter which one I used.
 
 ## Tests
 
