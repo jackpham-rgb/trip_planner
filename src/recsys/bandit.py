@@ -10,7 +10,7 @@ content_scoring.featurize(). This is exactly the cold-start argument the spec
 makes for contextual (feature-based) bandits over per-arm bandits: a new item
 gets a reasonable score immediately because it shares features with items
 already seen, and the prior mean below IS the Step-1 rules-based weight
-vector -- Thompson sampling only has to learn a CORRECTION to Jack's own
+vector -- Thompson sampling only has to learn a CORRECTION to my own
 hand-set profile, not start from nothing.
 
 Math (linear-Gaussian conjugate Bayesian linear regression):
@@ -87,7 +87,7 @@ class ThompsonBandit:
 
 
 def reward_from_feedback(action: str, rating: float | None = None) -> float:
-    """Turn Jack's feedback into a scalar reward. Explicit feedback (a rating)
+    """Turn my feedback into a scalar reward. Explicit feedback (a rating)
     wins when given, since it's the cleaner (if sparser) signal the spec
     prefers; otherwise fall back to the coarser implicit action label."""
     if rating is not None:

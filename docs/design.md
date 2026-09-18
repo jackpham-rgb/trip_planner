@@ -79,7 +79,7 @@ build order calls for.
   against a hand-set weight vector (`DEFAULT_WEIGHTS`); Step 2 dots it
   against a *learned* weight vector whose prior mean is that same
   `DEFAULT_WEIGHTS` vector. So the bandit doesn't start from nothing -- it
-  starts at Jack's own hand-set profile and learns a correction from there.
+  starts at my own hand-set profile and learns a correction from there.
   This is deliberately the "hybrid: content prior + bandit exploration"
   cold-start strategy the spec calls for, not a coincidence.
 

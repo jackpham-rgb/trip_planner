@@ -1,4 +1,4 @@
-"""User state: what Jack has done, whether he'd repeat it, and the bandit's
+"""User state: what I've done, whether I'd repeat it, and the bandit's
 learned posterior. Kept in its own file, completely separate from the content
 (`data/option_bank.json`), so rebuilding the option bank from a refreshed
 workbook can never silently wipe out history -- the single design decision

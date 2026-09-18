@@ -106,7 +106,7 @@ class Option:
 
 @dataclass
 class Context:
-    """A quick-intake snapshot of what's on Jack's mind right now."""
+    """A quick-intake snapshot of what's on my mind right now."""
 
     trip_type: str = "hangout_nearby"  # TRIP_TYPES
     duration_hint: Optional[str] = None  # free text if trip_type == "custom"
