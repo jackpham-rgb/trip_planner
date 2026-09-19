@@ -1,0 +1,9 @@
+{
+  "_comment": "Paste this into Firebase console -> Realtime Database -> Rules. See README.md for why one shared path (not one path per signed-in user) is correct here: this is a single-user app, and Anonymous Auth hands out a different UID per device/browser, which would break cross-device sync if used to partition data.",
+  "rules": {
+    "trip_planner": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}

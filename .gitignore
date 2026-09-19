@@ -1,6 +1,12 @@
-# Personal data -- keep on-device only, never commit (see CLAUDE.md privacy note)
+# The raw workbook stays local -- only tools/build_option_bank.py needs it,
+# and it holds far more granular personal notes than the parsed content
+# bank. data/option_bank.json (the parsed bank) IS tracked and shipped on
+# purpose: GitHub Pages is static, so the browser has to be able to fetch it
+# directly -- there's no backend left to keep it private server-side.
 *.xlsx
-data/*.json
+
+# Reference file, not part of the shipped app
+coffee-log.html
 
 __pycache__/
 *.pyc

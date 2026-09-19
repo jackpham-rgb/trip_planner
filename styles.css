@@ -1,0 +1,231 @@
+:root {
+  --bg: #f5f2ea;
+  --panel: #ffffff;
+  --ink: #1c2521;
+  --muted: #6b7570;
+  --accent: #1d5f4a;
+  --accent-ink: #ffffff;
+  --border: #e1ddd0;
+  --danger: #c0392b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14181a;
+    --panel: #1e2429;
+    --ink: #eef1ee;
+    --muted: #9aa39d;
+    --accent: #4fb894;
+    --accent-ink: #0b1210;
+    --border: #2b3339;
+    --danger: #ff6b5b;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding-bottom: 3rem;
+}
+
+header {
+  padding: 1.5rem 1rem 0.5rem;
+  text-align: center;
+}
+
+h1 { font-size: 1.4rem; margin: 0; }
+h1 + p { color: var(--muted); font-size: 0.85rem; margin: 0.4rem 0 0; }
+
+main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+nav.tabs {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 480px;
+  margin: 0.75rem auto 0;
+  padding: 0 1rem;
+}
+nav.tabs a {
+  flex: 1;
+  text-align: center;
+  padding: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+nav.tabs a.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+#intake-form, .panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.field-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+select, input, textarea {
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  width: 100%;
+}
+textarea { min-height: 72px; resize: vertical; line-height: 1.4; }
+
+[hidden] {
+  /* !important on purpose: [hidden] and a plain class selector like
+     `.feedback { display: flex }` have EQUAL specificity, so without this
+     whichever rule happens to be declared later in the file wins -- this
+     already broke twice (a `label` rule, then a `.feedback` rule) before
+     landing on the one fix that can't recur no matter what gets added later. */
+  display: none !important;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+button {
+  flex: 1;
+  padding: 0.7rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink);
+  font-weight: 500;
+}
+button:disabled { opacity: 0.5; pointer-events: none; }
+
+/* ---- tap-based rating "pips" (1-5), same interaction as coffee-log.html ---- */
+.pips { display: flex; gap: 6px; }
+.pips input { position: absolute; opacity: 0; width: 0; height: 0; }
+.pips label {
+  flex: 1;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 15px;
+  color: var(--muted);
+  cursor: pointer;
+  margin: 0;
+}
+.pips input:checked + label { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.pips input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- two/three-way toggle (yes/no, indoor/outdoor, ...) ---- */
+.toggle { display: flex; gap: 6px; }
+.toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.toggle label {
+  flex: 1;
+  padding: 0.6rem;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin: 0;
+}
+.toggle input:checked + label { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.toggle input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+#results {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+}
+.card h3 { margin: 0 0 0.25rem; font-size: 1.05rem; }
+.card .meta { margin: 0 0 0.4rem; font-size: 0.8rem; color: var(--muted); }
+.card .why { margin: 0 0 0.6rem; font-size: 0.9rem; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.feedback { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.feedback button {
+  flex: none;
+  font-size: 0.78rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+.feedback button[data-action="accepted_repeat"]:hover { border-color: var(--accent); }
+.feedback button.done { opacity: 0.5; pointer-events: none; }
+
+.itinerary-summary { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.5rem; }
+
+.empty { color: var(--muted); font-size: 0.9rem; text-align: center; padding: 2rem 0; }
+
+.context-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+}

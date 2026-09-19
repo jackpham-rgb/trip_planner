@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>recommender.js -- test suite</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  main { max-width: 720px; }
+  .test-row { display: flex; gap: 0.6rem; padding: 0.4rem 0.6rem; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 0.85rem; }
+  .test-row.pass { color: var(--accent); }
+  .test-row.fail { background: rgba(220,60,60,0.12); color: #c0392b; }
+  .badge { flex: none; width: 3.5em; font-weight: 700; }
+  .summary { font-size: 1.3rem; font-weight: 700; margin: 1rem 0; }
+</style>
+</head>
+<body>
+<header><h1>recommender.js test suite</h1></header>
+<main>
+  <p class="itinerary-summary">
+    Mirrors the Python tests that used to cover this logic
+    (tests/test_content_scoring.py, test_bandit.py, test_optimizer.py,
+    test_state.py before the JS port) -- run entirely in the browser, no
+    npm/node/build step required. Open this file directly.
+  </p>
+  <div id="summary" class="summary">Running…</div>
+  <div id="results"></div>
+</main>
+
+<script src="recommender.js"></script>
+<script>
+(function () {
+  const R = Recommender;
+  const results = [];
+
+  function test(name, fn) {
+    try { fn(); results.push({ name, pass: true }); }
+    catch (e) { results.push({ name, pass: false, error: e.message }); }
+  }
+  function assert(cond, msg) { if (!cond) throw new Error(msg || "assertion failed"); }
+  function assertClose(a, b, eps, msg) {
+    eps = eps === undefined ? 1e-6 : eps;
+    assert(Math.abs(a - b) < eps, msg || `expected ${a} ~= ${b}`);
+  }
+
+  // ---- content scoring (mirrors test_content_scoring.py) ----
+  test("filter drops over-budget items", () => {
+    const opts = [
+      { id: "cheap", source_sheet: "Cali", cost: "$" },
+      { id: "pricey", source_sheet: "Cali", cost: "$$$$" },
+    ];
+    const ctx = { tripType: "hangout_nearby", budgetLevel: 1, energy: 0.5, indoorOutdoor: 0, moodAdventurous: 0 };
+    const kept = R.filterCandidates(opts, ctx, new Set());
+    assert(kept.length === 1 && kept[0].id === "cheap");
+  });
+
+  test("filter excludes done-no-repeat ids", () => {
+    const opts = [{ id: "a", source_sheet: "Cali" }, { id: "b", source_sheet: "Cali" }];
+    const ctx = { tripType: "hangout_nearby", budgetLevel: 4, energy: 0.5, indoorOutdoor: 0, moodAdventurous: 0 };
+    const kept = R.filterCandidates(opts, ctx, new Set(["a"]));
+    assert(kept.length === 1 && kept[0].id === "b");
+  });
+
+  test("filter scopes by region sheet, not by dwell time, for trip type", () => {
+    const nearby = { id: "nearby", source_sheet: "Cali", est_hours: 3 };
+    const far = { id: "far", source_sheet: "East Asia", est_hours: 2 };
+    const ctxNear = { tripType: "hangout_nearby", budgetLevel: 4, energy: 0.5, indoorOutdoor: 0, moodAdventurous: 0 };
+    assert(R.filterCandidates([nearby, far], ctxNear, new Set()).length === 1);
+    const ctxLong = { tripType: "long_trip", budgetLevel: 4, energy: 0.5, indoorOutdoor: 0, moodAdventurous: 0 };
+    const keptLong = R.filterCandidates([nearby, far], ctxLong, new Set());
+    assert(keptLong.length === 1 && keptLong[0].id === "far");
+  });
+
+  test("featurize: indoor/outdoor match is near-maximal when aligned", () => {
+    const opt = { type: "Adventure", cost: "$$" };
+    const ctxOutdoor = { tripType: "hangout_nearby", budgetLevel: 2, energy: 0.5, indoorOutdoor: 1.0, moodAdventurous: 0 };
+    const ctxIndoor = { tripType: "hangout_nearby", budgetLevel: 2, energy: 0.5, indoorOutdoor: -1.0, moodAdventurous: 0 };
+    const phiMatch = R.featurize(opt, ctxOutdoor);
+    const phiMismatch = R.featurize(opt, ctxIndoor);
+    assert(phiMatch[1] > phiMismatch[1]);
+    assert(phiMatch[1] > 0.9);
+  });
+
+  test("featurize: budget fit penalizes over-budget items", () => {
+    const ctx = { tripType: "hangout_nearby", budgetLevel: 0, energy: 0.5, indoorOutdoor: 0, moodAdventurous: 0 };
+    const cheap = R.featurize({ cost: "Free" }, ctx);
+    const expensive = R.featurize({ cost: "$$$$" }, ctx);
+    assert(cheap[4] > expensive[4]);
+  });
+
+  test("rankByRules orders the best match first", () => {
+    const good = { id: "good", type: "Adventure", cost: "$", priority: "MUST", viral_rating: "Actually worth it" };
+    const bad = { id: "bad", type: "Relaxation", cost: "$$$$", priority: "OPTIONAL", viral_rating: "Skip unless personally interested" };
+    const ctx = { tripType: "hangout_nearby", budgetLevel: 1, indoorOutdoor: 1.0, moodAdventurous: 1.0, energy: 0.9 };
+    const ranked = R.rankByRules([bad, good], ctx);
+    assert(ranked[0].option.id === "good");
+  });
+
+  test("diversify breaks up a single-category tunnel", () => {
+    const scored = [];
+    for (let i = 0; i < 5; i++) scored.push({ option: { id: "n" + i, type: "Nature" }, score: 10 - i });
+    scored.push({ option: { id: "food1", type: "Food" }, score: 6.0 });
+    const top3 = R.diversify(scored, 3, 2.0);
+    assert(top3.some((s) => s.option.type === "Food"));
+  });
+
+  // ---- bandit (mirrors test_bandit.py) ----
+  test("prior mean matches theta_hat with no data", () => {
+    const prior = [0.0, 1.0, -1.0];
+    const bandit = new R.ThompsonBandit(["bias", "a", "b"], prior);
+    bandit.thetaHat.forEach((v, i) => assertClose(v, prior[i], 1e-9));
+  });
+
+  test("update shifts theta toward the rewarded feature", () => {
+    const bandit = new R.ThompsonBandit(["a", "b"], [0, 0], 0.5);
+    const phi = [1.0, 0.0];
+    for (let i = 0; i < 20; i++) bandit.update(phi, 1.0);
+    assert(bandit.thetaHat[0] > 0.5);
+    assert(Math.abs(bandit.thetaHat[1]) < 1e-6);
+  });
+
+  test("Thompson sampling prefers the higher-value arm on average", () => {
+    const bandit = new R.ThompsonBandit(["good", "bad"], [0, 0], 1.0, 0.3);
+    const goodPhi = [1.0, 0.0], badPhi = [0.0, 1.0];
+    for (let i = 0; i < 30; i++) { bandit.update(goodPhi, 1.0); bandit.update(badPhi, -1.0); }
+    const rng = R.makeRng(0);
+    let picksGood = 0;
+    const trials = 200;
+    for (let i = 0; i < trials; i++) {
+      const scores = bandit.rank([goodPhi, badPhi], rng);
+      if (scores[0] > scores[1]) picksGood++;
+    }
+    assert(picksGood / trials > 0.9, `only ${picksGood}/${trials}`);
+  });
+
+  test("decay pulls the posterior back toward the prior", () => {
+    const b1 = new R.ThompsonBandit(["a"], [0.0], 1.0);
+    for (let i = 0; i < 50; i++) b1.update([1.0], 1.0);
+    const noDecay = b1.thetaHat[0];
+
+    const b2 = new R.ThompsonBandit(["a"], [0.0], 1.0);
+    for (let i = 0; i < 50; i++) b2.update([1.0], 1.0, 0.8);
+    const withDecay = b2.thetaHat[0];
+
+    assert(noDecay > withDecay, `${noDecay} should be > ${withDecay}`);
+  });
+
+  test("reward from feedback: an explicit rating overrides the action label", () => {
+    assertClose(R.rewardFromFeedback("accepted_repeat", 5), 1.0);
+    assertClose(R.rewardFromFeedback("accepted_repeat", 1), -1.0);
+    assertClose(R.rewardFromFeedback("accepted_repeat"), 1.0);
+    assert(R.rewardFromFeedback("accepted_no_repeat") < 0);
+    assert(R.rewardFromFeedback("skipped") < 0);
+    assertClose(R.rewardFromFeedback("unknown_action"), 0.0);
+  });
+
+  // ---- trip optimizer (mirrors test_optimizer.py) ----
+  function opt(id, est_hours, city_region, section) {
+    return { id, city_region: city_region || "City", section: section || "Region", est_hours: est_hours === undefined ? 2.0 : est_hours };
+  }
+
+  test("estimateTravelHours: same city is cheaper than a different region", () => {
+    const a = opt("a", 2, "Same"), b = opt("b", 2, "Same"), c = opt("c", 2, "Different", "OtherRegion");
+    assert(R.estimateTravelHours(a, b) < R.estimateTravelHours(a, c));
+  });
+
+  test("greedyTwoOpt respects the time budget", () => {
+    const scored = [];
+    for (let i = 0; i < 10; i++) scored.push({ option: opt("o" + i, 3), score: i });
+    const itin = R.greedyTwoOpt(scored, 8.0);
+    assert(itin.totalHours <= 8.0 + 1e-6);
+    assert(itin.order.length > 0);
+  });
+
+  test("greedyTwoOpt picks the higher-value item first when the budget is tight", () => {
+    const low = { option: opt("low", 2), score: 1.0 };
+    const high = { option: opt("high", 2), score: 10.0 };
+    const itin = R.greedyTwoOpt([low, high], 3.0); // only room for one
+    assert(itin.order.length === 1 && itin.order[0].id === "high");
+  });
+
+  // ---- recovery curve (mirrors test_state.py) ----
+  test("recoveryMultiplier is low right after and recovers over time", () => {
+    const today = new Date();
+    const state = { status: "done_repeat", lastDone: today.toISOString().slice(0, 10) };
+    const rightAfter = R.recoveryMultiplier(state, today);
+    const later = new Date(today); later.setDate(later.getDate() + 60);
+    const muchLater = R.recoveryMultiplier(state, later);
+    assert(rightAfter < muchLater);
+    assert(muchLater > 0.9);
+    assert(R.recoveryMultiplier(null, today) === 1.0);
+  });
+
+  // ---- render ----
+  const passed = results.filter((r) => r.pass).length;
+  document.title = `${passed}/${results.length} tests passed`;
+  document.getElementById("summary").textContent = `${passed}/${results.length} passed`;
+  document.getElementById("summary").style.color = passed === results.length ? "var(--accent)" : "#c0392b";
+  document.getElementById("results").innerHTML = results
+    .map((r) => `<div class="test-row ${r.pass ? "pass" : "fail"}"><span class="badge">${r.pass ? "PASS" : "FAIL"}</span><span>${r.name}${r.error ? " -- " + r.error : ""}</span></div>`)
+    .join("");
+})();
+</script>
+</body>
+</html>

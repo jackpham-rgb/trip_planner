@@ -1,7 +1,0 @@
-numpy
-openpyxl
-ortools
-pytest
-fastapi
-uvicorn[standard]
-httpx

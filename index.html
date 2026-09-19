@@ -13,6 +13,7 @@
 <body>
 <header>
   <h1>What should I do?</h1>
+  <p id="context-note"></p>
 </header>
 
 <main id="app">
@@ -55,7 +56,7 @@
 
     <label>
       Indoor / outdoor
-      <select name="indoor_outdoor">
+      <select name="indoor_outdoor" id="indoor_outdoor">
         <option value="-1">Indoor</option>
         <option value="0" selected>No preference</option>
         <option value="1">Outdoor</option>
@@ -91,13 +92,39 @@
     <p class="meta"></p>
     <p class="why"></p>
     <div class="feedback">
-      <button data-action="accepted_repeat">Did it, would repeat</button>
-      <button data-action="accepted_no_repeat">Did it, wouldn't repeat</button>
-      <button data-action="skipped">Skip</button>
+      <button type="button" data-open-log>Log what happened</button>
     </div>
+    <form class="log-form" hidden>
+      <div class="field">
+        <span class="field-label">How was it?</span>
+        <div class="pips rating-pips"></div>
+      </div>
+      <div class="field">
+        <span class="field-label">Would you do it again?</span>
+        <div class="toggle">
+          <input type="radio" name="repeat" value="yes" id="repeat-yes">
+          <label for="repeat-yes">Yes</label>
+          <input type="radio" name="repeat" value="no" id="repeat-no">
+          <label for="repeat-no">No</label>
+        </div>
+      </div>
+      <label>
+        Notes <span style="font-weight:400">(for you to read later -- not used in scoring)</span>
+        <textarea name="notes" placeholder="What you'd want to remember next time."></textarea>
+      </label>
+      <div class="actions">
+        <button type="button" class="secondary" data-cancel-log>Cancel</button>
+        <button type="button" data-save-log>Save</button>
+      </div>
+    </form>
   </article>
 </template>
 
+<script src="recommender.js"></script>
+<script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

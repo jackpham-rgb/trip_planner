@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "trip-planner-web",
+      "name": "trip-planner-static",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["scripts/run_web.py", "--port", "8420"],
+      "runtimeArgs": ["-m", "http.server", "8420"],
       "port": 8420
     }
   ]

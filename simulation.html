@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why a bandit? -- a live regret-curve simulation</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  main { max-width: 720px; }
+  svg.chart { width: 100%; height: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+  .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; margin: 0.5rem 0 1rem; }
+  .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem; }
+  td, th { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+</style>
+</head>
+<body>
+<header><h1>Why a bandit, not just "pick the top score"?</h1></header>
+<main>
+  <p class="itinerary-summary">
+    This runs the same comparison <code>scripts/simulate_bandit.py</code> used
+    to print to a terminal (see docs/history/) -- Thompson sampling vs.
+    epsilon-greedy vs. picking randomly -- but live, in the browser, using the
+    exact <code>ThompsonBandit</code> class from <code>recommender.js</code>
+    that the real app runs. A made-up "true" preference vector stands in for
+    taste that's never directly observable; each strategy only sees noisy
+    rewards and has to learn from them.
+  </p>
+
+  <div class="panel">
+    <div class="actions">
+      <button type="button" id="btn-run">Run simulation</button>
+    </div>
+  </div>
+
+  <div id="chart-wrap" style="margin-top:1rem;"></div>
+  <div id="summary"></div>
+</main>
+
+<script src="recommender.js"></script>
+<script>
+(function () {
+  const R = Recommender;
+  const N_ARMS = 12, N_FEATURES = 5, N_ROUNDS = 400, SEED = 0;
+  const COLORS = { thompson: "#4fb894", epsilon: "#e0a634", random: "#c0392b" };
+
+  function runThompson(trueTheta, armFeatures, rng) {
+    const bandit = new R.ThompsonBandit(
+      Array.from({ length: N_FEATURES }, (_, i) => "f" + i),
+      new Array(N_FEATURES).fill(0), 1.0, 1.0
+    );
+    const bestValue = Math.max(...armFeatures.map((phi) => R.linalg.dot(trueTheta, phi)));
+    const regrets = [];
+    for (let t = 0; t < N_ROUNDS; t++) {
+      const scores = bandit.rank(armFeatures, rng);
+      const choice = scores.indexOf(Math.max(...scores));
+      const phi = armFeatures[choice];
+      const reward = R.linalg.dot(trueTheta, phi) + gaussianNoise(rng, 0.3);
+      bandit.update(phi, reward);
+      regrets.push(bestValue - R.linalg.dot(trueTheta, phi));
+    }
+    return regrets;
+  }
+
+  function runEpsilonGreedy(trueTheta, armFeatures, rng, eps0 = 1.0) {
+    let thetaHat = new Array(N_FEATURES).fill(0);
+    let A = R.linalg.identity(N_FEATURES);
+    let b = new Array(N_FEATURES).fill(0);
+    const bestValue = Math.max(...armFeatures.map((phi) => R.linalg.dot(trueTheta, phi)));
+    const regrets = [];
+    for (let t = 0; t < N_ROUNDS; t++) {
+      const eps = Math.min(1, eps0 / (t + 1));
+      let choice;
+      if (rng() < eps) {
+        choice = Math.floor(rng() * armFeatures.length);
+      } else {
+        const scores = armFeatures.map((phi) => R.linalg.dot(thetaHat, phi));
+        choice = scores.indexOf(Math.max(...scores));
+      }
+      const phi = armFeatures[choice];
+      const reward = R.linalg.dot(trueTheta, phi) + gaussianNoise(rng, 0.3);
+      A = R.linalg.matAdd(A, R.linalg.outer(phi, phi));
+      b = R.linalg.vecAdd(b, R.linalg.vecScale(phi, reward));
+      thetaHat = R.linalg.solveLinear(A, b);
+      regrets.push(bestValue - R.linalg.dot(trueTheta, phi));
+    }
+    return regrets;
+  }
+
+  function runRandom(trueTheta, armFeatures, rng) {
+    const bestValue = Math.max(...armFeatures.map((phi) => R.linalg.dot(trueTheta, phi)));
+    const regrets = [];
+    for (let t = 0; t < N_ROUNDS; t++) {
+      const choice = Math.floor(rng() * armFeatures.length);
+      regrets.push(bestValue - R.linalg.dot(trueTheta, armFeatures[choice]));
+    }
+    return regrets;
+  }
+
+  function gaussianNoise(rng, sigma) { return R.gaussianRandom(rng) * sigma; }
+
+  function bucketedAvg(regrets, bucket) {
+    bucket = bucket || 20;
+    const out = [];
+    for (let i = 0; i < regrets.length; i += bucket) {
+      const slice = regrets.slice(i, i + bucket);
+      out.push(slice.reduce((a, v) => a + v, 0) / slice.length);
+    }
+    return out;
+  }
+
+  function lineChart(series, width, height) {
+    const pad = 28;
+    const allVals = Object.values(series).flat();
+    const maxY = Math.max(...allVals, 0.01);
+    const n = Object.values(series)[0].length;
+    const x = (i) => pad + (i / (n - 1)) * (width - 2 * pad);
+    const y = (v) => height - pad - (v / maxY) * (height - 2 * pad);
+
+    let svg = `<svg class="chart" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">`;
+    // axes
+    svg += `<line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="currentColor" stroke-opacity="0.3"/>`;
+    svg += `<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" stroke="currentColor" stroke-opacity="0.3"/>`;
+    for (const [name, values] of Object.entries(series)) {
+      const points = values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+      svg += `<polyline points="${points}" fill="none" stroke="${COLORS[name]}" stroke-width="2.5"/>`;
+    }
+    svg += `</svg>`;
+    return svg;
+  }
+
+  function main() {
+    const rngA = R.makeRng(SEED), rngB = R.makeRng(SEED), rngC = R.makeRng(SEED), rngSetup = R.makeRng(SEED);
+    const trueTheta = Array.from({ length: N_FEATURES }, () => R.gaussianRandom(rngSetup));
+    const armFeatures = Array.from({ length: N_ARMS }, () =>
+      Array.from({ length: N_FEATURES }, () => R.gaussianRandom(rngSetup))
+    );
+
+    const results = {
+      thompson: runThompson(trueTheta, armFeatures, rngA),
+      epsilon: runEpsilonGreedy(trueTheta, armFeatures, rngB),
+      random: runRandom(trueTheta, armFeatures, rngC),
+    };
+
+    const bucketed = {};
+    for (const k in results) bucketed[k] = bucketedAvg(results[k], 20);
+
+    document.getElementById("chart-wrap").innerHTML =
+      `<div class="legend">
+        <span><span class="swatch" style="background:${COLORS.thompson}"></span>Thompson sampling</span>
+        <span><span class="swatch" style="background:${COLORS.epsilon}"></span>epsilon-greedy</span>
+        <span><span class="swatch" style="background:${COLORS.random}"></span>random baseline</span>
+      </div>` + lineChart(bucketed, 640, 320);
+
+    const cum = (arr) => arr.reduce((a, v) => a + v, 0);
+    document.getElementById("summary").innerHTML =
+      `<table>
+        <tr><th>Strategy</th><th>Cumulative regret (${N_ROUNDS} rounds, lower is better)</th></tr>
+        <tr><td>Thompson sampling</td><td>${cum(results.thompson).toFixed(1)}</td></tr>
+        <tr><td>epsilon-greedy</td><td>${cum(results.epsilon).toFixed(1)}</td></tr>
+        <tr><td>random baseline</td><td>${cum(results.random).toFixed(1)}</td></tr>
+      </table>
+      <p class="itinerary-summary" style="margin-top:0.75rem;">
+        Both learners land far below random almost immediately. Thompson
+        sampling sometimes ends up with slightly higher cumulative regret
+        than a well-tuned epsilon-greedy on an easy synthetic problem like
+        this one -- it keeps a little exploration alive by design (sampling
+        from posterior uncertainty) rather than decaying to pure exploitation
+        the way epsilon-greedy's schedule does. That trade only shows up
+        because this toy problem is easy; on the real option bank, where
+        "arms" share features and keep growing, that same posterior-driven
+        exploration is what lets a brand-new destination get a fair shot
+        instead of never being tried.
+      </p>`;
+  }
+
+  document.getElementById("btn-run").addEventListener("click", main);
+  main(); // run once on load so the page isn't empty
+})();
+</script>
+</body>
+</html>

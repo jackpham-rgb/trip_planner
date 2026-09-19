@@ -11,19 +11,27 @@ the itinerary header signature, reads the data rows that follow each one, and
 tags each row with the nearest preceding short title as its `section`. It
 assigns a deterministic ID (sheet + section + destination + counter) so the
 same real-world row maps to the same ID across rebuilds, which is what lets
-`state.json` (done/repeat history) survive a content refresh.
+the stored history (Firebase, or the browser's localStorage fallback) survive
+a content refresh.
+
+This is the one Python step left in the project -- an offline build script,
+never run by GitHub Pages itself. Run it whenever the workbook changes:
+
+    python tools/build_option_bank.py --xlsx "Jack-Master-Travel-Database.xlsx"
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Iterable, Optional
 
 import openpyxl
 
-from .schema import Option
+sys.path.insert(0, str(Path(__file__).parent))
+from schema import Option  # noqa: E402
 
 REGION_SHEETS = [
     "Cali", "Weekend Trips", "USA", "USA MEX CAN", "South America", "Europe",

@@ -3,7 +3,7 @@ from pathlib import Path
 import openpyxl
 import pytest
 
-from recsys.data_loader import build_option_bank, parse_sheet
+from build_option_bank import build_option_bank, parse_sheet
 
 REAL_WORKBOOK = Path(__file__).parent.parent / "Jack-Master-Travel-Database.xlsx"
 

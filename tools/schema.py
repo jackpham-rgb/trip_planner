@@ -1,12 +1,14 @@
-"""Shared vocabularies and dataclasses for the option bank and context.
+"""The `Option` record and controlled vocabularies for the option bank.
 
 The vocabularies below are lifted directly from the "Lists" sheet of
 Jack-Master-Travel-Database.xlsx, so encodings line up with how the workbook
-already categorizes things instead of inventing a parallel taxonomy.
+already categorizes things instead of inventing a parallel taxonomy. The
+same vocabularies are mirrored in `recommender.js` (the JS port used at
+runtime) -- this file's only job now is feeding `build_option_bank.py`.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from typing import Optional
 
 
@@ -102,22 +104,3 @@ class Option:
     @staticmethod
     def from_dict(d: dict) -> "Option":
         return Option(**{k: v for k, v in d.items() if k in Option.__dataclass_fields__})
-
-
-@dataclass
-class Context:
-    """A quick-intake snapshot of what's on my mind right now."""
-
-    trip_type: str = "hangout_nearby"  # TRIP_TYPES
-    duration_hint: Optional[str] = None  # free text if trip_type == "custom"
-    energy: float = 0.5        # 0 (wiped out) .. 1 (wired)
-    budget_level: int = 2      # index into COSTS the user is willing to spend up to
-    party: str = "solo"        # solo / partner / friends / family
-    indoor_outdoor: float = 0.0  # -1 indoor .. +1 outdoor, 0 = no preference
-    mood_adventurous: float = 0.0  # -1 relaxed .. +1 adventurous
-    season: Optional[str] = None
-    time_of_day: Optional[str] = None
-    extra_tags: list = field(default_factory=list)
-
-    def to_dict(self) -> dict:
-        return asdict(self)
