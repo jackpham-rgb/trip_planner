@@ -205,18 +205,28 @@
     return (2.0 * index) / (size - 1) - 1.0;
   }
 
-  /** Cheap retrieval: drop what's out of scope before anyone scores anything. */
+  /** Cheap retrieval: drop what's out of scope before anyone scores anything.
+   *
+   * Two fields on `context` let the intake wizard ask "how far/which region"
+   * instead of a hardcoded cap, without this function's callers changing:
+   *   - `context.preferredSheets` (a Set) overrides the default TRIP_TYPE_SHEETS
+   *     scoping -- e.g. narrowing a long trip to just "Europe" sheets.
+   *   - `context.maxDwellHours` overrides the default nearby/day-trip time cap
+   *     -- e.g. "just close by" (3h) vs "give me the whole day" (16h).
+   * Both are optional; omitting them reproduces the old fixed behavior. */
   function filterCandidates(options, context, excludedIds) {
     const budgetIdx = Math.max(0, Math.min(context.budgetLevel, COSTS.length - 1));
-    const allowedSheets = TRIP_TYPE_SHEETS[context.tripType]; // undefined for "custom" -> no restriction
+    const allowedSheets = context.preferredSheets || TRIP_TYPE_SHEETS[context.tripType]; // undefined for "custom" -> no restriction
+    const isShortTrip = context.tripType === "hangout_nearby" || context.tripType === "day_trip";
+    const dwellCap = context.maxDwellHours !== undefined && context.maxDwellHours !== null
+      ? context.maxDwellHours
+      : (isShortTrip ? 30 : null);
     return options.filter((o) => {
       if (excludedIds.has(o.id)) return false;
       const costIdx = ordinal(o.cost, COSTS);
       if (costIdx !== null && costIdx > budgetIdx) return false;
       if (allowedSheets && !allowedSheets.has(o.source_sheet)) return false;
-      if (context.tripType === "hangout_nearby" || context.tripType === "day_trip") {
-        if (o.est_hours !== null && o.est_hours !== undefined && o.est_hours > 30) return false;
-      }
+      if (dwellCap !== null && o.est_hours !== null && o.est_hours !== undefined && o.est_hours > dwellCap) return false;
       return true;
     });
   }
@@ -470,12 +480,18 @@
   const RECOVERY_FLOOR = 0.25;
   const RECOVERY_TAU_DAYS = 10.0;
 
+  // When the review log asks "how soon would you want to do this again?",
+  // the answer sets a per-item tau instead of the one-size-fits-all default
+  // above -- "soon" should genuinely resurface sooner than "someday".
+  const RECOVERY_TAU_PRESETS = { soon: 3.0, sometime: 10.0, someday: 30.0 };
+
   function recoveryMultiplier(itemState, today) {
     if (!itemState || itemState.status !== "done_repeat" || !itemState.lastDone) return 1.0;
     today = today || new Date();
     const last = new Date(itemState.lastDone);
     const t = Math.max(0, Math.floor((today - last) / (1000 * 60 * 60 * 24)));
-    return RECOVERY_FLOOR + (1.0 - RECOVERY_FLOOR) * (1.0 - Math.exp(-t / RECOVERY_TAU_DAYS));
+    const tau = itemState.recoveryTauDays || RECOVERY_TAU_DAYS;
+    return RECOVERY_FLOOR + (1.0 - RECOVERY_FLOOR) * (1.0 - Math.exp(-t / tau));
   }
 
   // ======================================================================
@@ -493,7 +509,7 @@
     // trip optimizer
     estimateTravelHours, routeHours, greedyTwoOpt,
     // state
-    recoveryMultiplier, RECOVERY_FLOOR, RECOVERY_TAU_DAYS,
+    recoveryMultiplier, RECOVERY_FLOOR, RECOVERY_TAU_DAYS, RECOVERY_TAU_PRESETS,
     // linear algebra + rng (exposed for test.html / simulation.html)
     linalg: { dot, vecAdd, vecScale, matVec, matAdd, matScale, outer, identity, solveLinear, invert, cholesky },
     makeRng, gaussianRandom, sampleMultivariateNormal,

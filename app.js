@@ -4,6 +4,13 @@
  * storage lives here; the actual recommendation math is all in
  * recommender.js and never touches any of that. See README.md for the
  * full architecture writeup.
+ *
+ * The intake questions and the post-activity review are both rendered as a
+ * short sequence of one-question-at-a-time steps rather than one long form,
+ * and which step comes next depends on the answer just given (e.g. "long
+ * trip" asks which region; "hangout nearby" asks how far instead). Both
+ * flows share the same tiny step-renderer (`renderChoiceStep`/`renderTextStep`)
+ * further down.
  */
 (function () {
   "use strict";
@@ -114,7 +121,7 @@
     return R.greedyTwoOpt(pool, budgetHours);
   }
 
-  function applyFeedback(state, option, context, action, rating, notes) {
+  function applyFeedback(state, option, context, action, rating, notes, extra) {
     const reward = R.rewardFromFeedback(action, rating);
     const bandit = getBandit(state);
     const phi = R.featurize(option, context);
@@ -131,6 +138,7 @@
         lastDone: new Date().toISOString().slice(0, 10),
         rating: rating === undefined ? null : rating,
         notes: notes || "",
+        ...(extra || {}),
       };
     }
   }
@@ -138,6 +146,8 @@
   // ====================================================================
   // Geolocation -> zip/city (not raw distance math) + weather defaults
   // ====================================================================
+
+  let weatherIndoorOutdoorDefault = null; // set once geolocation+weather resolve, used as a suggested (not forced) answer
 
   async function reverseGeocode(lat, lon) {
     const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
@@ -152,14 +162,11 @@
     return { temperature: data.current.temperature_2m, precipitation: data.current.precipitation };
   }
 
-  function applyWeatherDefault(weather) {
-    const select = document.getElementById("indoor_outdoor");
-    if (!weather || !select) return;
-    if (weather.precipitation > 0.1 || weather.temperature < 45 || weather.temperature > 95) {
-      select.value = "-1";
-    } else if (weather.temperature >= 60 && weather.temperature <= 80) {
-      select.value = "1";
-    }
+  function weatherToIndoorOutdoor(weather) {
+    if (!weather) return null;
+    if (weather.precipitation > 0.1 || weather.temperature < 45 || weather.temperature > 95) return "-1";
+    if (weather.temperature >= 60 && weather.temperature <= 80) return "1";
+    return null;
   }
 
   function initContextSignals() {
@@ -181,9 +188,9 @@
           if (weather.status === "fulfilled" && weather.value) {
             const w = weather.value;
             parts.push(`${Math.round(w.temperature)}°F${w.precipitation > 0 ? ", precip" : ""}`);
-            applyWeatherDefault(w);
+            weatherIndoorOutdoorDefault = weatherToIndoorOutdoor(w);
           }
-          if (note && parts.length) note.textContent = parts.join(" · ") + " (auto-filled defaults below, override anytime)";
+          if (note && parts.length) note.textContent = parts.join(" · ");
         } catch (e) { /* these are just defaults -- silently skip on failure */ }
       },
       () => { /* permission denied or unavailable -- the form still works without it */ },
@@ -192,77 +199,282 @@
   }
 
   // ====================================================================
-  // DOM wiring
+  // Yelp-style price legend and region groupings -- display/UI concerns
+  // only, so they live here rather than in recommender.js.
+  // ====================================================================
+
+  const COST_HINTS = { Free: "$0", $: "under $20", $$: "$20–75", $$$: "$75–200", $$$$: "$200+" };
+
+  const REGION_GROUPS = {
+    americas: new Set(["USA", "USA MEX CAN", "South America"]),
+    europe: new Set(["Europe"]),
+    asia: new Set(["East Asia", "South East Asia"]),
+    mea: new Set(["Middle East", "Africa"]),
+    // "anywhere" is intentionally absent -- it means "no filter", which
+    // also reaches "Rest of World", the one sheet no specific group covers.
+  };
+
+  // ====================================================================
+  // A tiny step renderer shared by the intake wizard and the per-card
+  // review log. `container` is any element; `onPick`/`onSubmit` receive the
+  // chosen value and are expected to render whatever comes next themselves.
+  // ====================================================================
+
+  function renderChoiceStep(container, question, options, onPick, opts) {
+    opts = opts || {};
+    const suggested = opts.suggestedValue;
+    container.innerHTML = `
+      ${opts.progress ? `<div class="wizard-progress">${opts.progress}</div>` : ""}
+      <h2 class="wizard-question">${question}</h2>
+      <div class="choice-list">
+        ${options.map(([val, label]) =>
+          `<button type="button" class="choice-btn${val === suggested ? " suggested" : ""}" data-value="${val}">${label}</button>`
+        ).join("")}
+      </div>
+      ${opts.onBack ? `<button type="button" class="secondary back-btn">Back</button>` : ""}
+    `;
+    container.querySelectorAll(".choice-btn").forEach((btn) => {
+      btn.addEventListener("click", () => onPick(btn.dataset.value));
+    });
+    if (opts.onBack) container.querySelector(".back-btn").addEventListener("click", opts.onBack);
+  }
+
+  function renderMultiChoiceStep(container, question, options, onSubmit, opts) {
+    opts = opts || {};
+    container.innerHTML = `
+      ${opts.progress ? `<div class="wizard-progress">${opts.progress}</div>` : ""}
+      <h2 class="wizard-question">${question}</h2>
+      <div class="choice-list multi">
+        ${options.map(([val, label]) => `<button type="button" class="choice-btn chip-btn" data-value="${val}">${label}</button>`).join("")}
+      </div>
+      <div class="actions"><button type="button" class="continue-btn">Continue</button></div>
+    `;
+    const chosen = new Set();
+    container.querySelectorAll(".choice-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        btn.classList.toggle("selected");
+        if (chosen.has(btn.dataset.value)) chosen.delete(btn.dataset.value);
+        else chosen.add(btn.dataset.value);
+      });
+    });
+    container.querySelector(".continue-btn").addEventListener("click", () => onSubmit([...chosen]));
+  }
+
+  function renderTextStep(container, question, placeholder, onSubmit, opts) {
+    opts = opts || {};
+    container.innerHTML = `
+      ${opts.progress ? `<div class="wizard-progress">${opts.progress}</div>` : ""}
+      <h2 class="wizard-question">${question}</h2>
+      <input type="text" class="step-text-input" placeholder="${placeholder || ""}">
+      <div class="actions"><button type="button" class="continue-btn">Continue</button></div>
+    `;
+    const submit = () => onSubmit(container.querySelector(".step-text-input").value.trim());
+    container.querySelector(".continue-btn").addEventListener("click", submit);
+    container.querySelector(".step-text-input").addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+  }
+
+  // ====================================================================
+  // The intake wizard -- one question at a time, later questions chosen
+  // by earlier answers.
+  // ====================================================================
+
+  function intakeSteps() {
+    return [
+      {
+        id: "trip_type", question: "What kind of trip is this?",
+        options: [
+          ["hangout_nearby", "Just hanging out nearby"],
+          ["day_trip", "Day trip"],
+          ["long_trip", "Long trip"],
+          ["custom", "Custom duration"],
+        ],
+      },
+      {
+        id: "distance", question: "How far are you willing to go?",
+        showIf: (a) => a.trip_type === "hangout_nearby" || a.trip_type === "day_trip",
+        options: [
+          ["3", "Just close by — there and back in a few hours"],
+          ["8", "A bit of a trek — can fill most of a day"],
+          ["16", "Give me the whole day, maybe overnight"],
+        ],
+      },
+      {
+        id: "region", question: "Which part of the world appeals right now?",
+        showIf: (a) => a.trip_type === "long_trip",
+        options: [
+          ["americas", "The Americas"], ["europe", "Europe"], ["asia", "Asia"],
+          ["mea", "Middle East & Africa"], ["anywhere", "Surprise me — anywhere"],
+        ],
+      },
+      {
+        id: "duration_hint", question: "Roughly how long?", type: "text",
+        showIf: (a) => a.trip_type === "custom", placeholder: "e.g. '5 hours', '4 days'",
+      },
+      {
+        id: "energy", question: "Energy level right now?",
+        options: [["0.1", "Wiped out"], ["0.3", "Kind of tired"], ["0.5", "Normal"], ["0.7", "Good energy"], ["0.9", "Wired / raring to go"]],
+      },
+      {
+        id: "budget", question: "Budget for this?",
+        options: () => R.COSTS.map((label, i) => [String(i), `${label} — ${COST_HINTS[label]}`]),
+      },
+      {
+        id: "party", question: "Who's coming?",
+        options: [["solo", "Solo"], ["partner", "Partner"], ["friends", "Friends"], ["family", "Family"]],
+      },
+      {
+        id: "indoor_outdoor", question: "Indoor or outdoor?",
+        options: [["-1", "Indoor"], ["0", "No preference"], ["1", "Outdoor"]],
+        suggestedValue: () => weatherIndoorOutdoorDefault,
+      },
+      {
+        id: "mood", question: "Adventurous or relaxed?",
+        options: [["-1", "Relaxed"], ["0", "No preference"], ["1", "Adventurous"]],
+      },
+    ];
+  }
+
+  let wizardAnswers = {};
+  let wizardIndex = 0;
+
+  function visibleIntakeSteps() {
+    return intakeSteps().filter((s) => !s.showIf || s.showIf(wizardAnswers));
+  }
+
+  function renderWizard() {
+    const steps = visibleIntakeSteps();
+    const wizardEl = document.getElementById("wizard");
+    if (wizardIndex >= steps.length) { renderWizardDone(wizardEl); return; }
+    const step = steps[wizardIndex];
+    const progress = `Step ${wizardIndex + 1} of ${steps.length}`;
+    const goBack = wizardIndex > 0 ? () => { wizardIndex--; renderWizard(); } : null;
+
+    if (step.type === "text") {
+      renderTextStep(wizardEl, step.question, step.placeholder, (value) => {
+        wizardAnswers[step.id] = value;
+        wizardIndex++;
+        renderWizard();
+      }, { progress, onBack: goBack });
+    } else {
+      const options = typeof step.options === "function" ? step.options() : step.options;
+      const suggested = typeof step.suggestedValue === "function" ? step.suggestedValue() : step.suggestedValue;
+      renderChoiceStep(wizardEl, step.question, options, (value) => {
+        wizardAnswers[step.id] = value;
+        wizardIndex++;
+        renderWizard();
+      }, { progress, onBack: goBack, suggestedValue: suggested });
+    }
+  }
+
+  function buildContextFromAnswers(a) {
+    const ctx = {
+      tripType: a.trip_type,
+      energy: parseFloat(a.energy),
+      budgetLevel: parseInt(a.budget, 10),
+      party: a.party,
+      indoorOutdoor: parseFloat(a.indoor_outdoor),
+      moodAdventurous: parseFloat(a.mood),
+    };
+    if (a.distance) ctx.maxDwellHours = parseFloat(a.distance);
+    if (a.region && a.region !== "anywhere" && REGION_GROUPS[a.region]) ctx.preferredSheets = REGION_GROUPS[a.region];
+    return ctx;
+  }
+
+  function restartWizard() {
+    wizardAnswers = {};
+    wizardIndex = 0;
+    document.getElementById("results").innerHTML = "";
+    renderWizard();
+  }
+
+  function renderWizardDone(wizardEl) {
+    const context = buildContextFromAnswers(wizardAnswers);
+    wizardEl.innerHTML = `
+      <h2 class="wizard-question">Ready.</h2>
+      <div class="actions">
+        <button type="button" id="btn-suggest">Suggest something</button>
+        <button type="button" id="btn-plan">Plan a trip</button>
+      </div>
+      <button type="button" class="secondary" id="wizard-restart">Start over</button>
+    `;
+    document.getElementById("btn-suggest").addEventListener("click", () => {
+      renderEmpty("Thinking…");
+      const results = recommendNext(OPTIONS, context, STATE, 3); // top 3, per the brief
+      renderSuggestions(results, context);
+    });
+    document.getElementById("btn-plan").addEventListener("click", () => renderHoursStep(wizardEl, context));
+    document.getElementById("wizard-restart").addEventListener("click", restartWizard);
+  }
+
+  function renderHoursStep(wizardEl, context) {
+    const presets = [["3", "3 hours"], ["5", "5 hours"], ["8", "8 hours"], ["12", "12 hours"]];
+    renderChoiceStep(wizardEl, "How many hours do you have?", presets, (value) => {
+      renderEmpty("Planning…");
+      const itinerary = planTrip(OPTIONS, context, STATE, parseFloat(value));
+      renderItinerary(itinerary);
+    }, { onBack: () => renderWizardDone(wizardEl) });
+  }
+
+  // ====================================================================
+  // Results rendering
   // ====================================================================
 
   let OPTIONS = [];
   let STATE = { items: {}, bandit: null };
-
-  const form = document.getElementById("intake-form");
   const resultsEl = document.getElementById("results");
-  const tripTypeEl = document.getElementById("trip_type");
-  const hoursField = document.getElementById("hours-field");
   const cardTemplate = document.getElementById("suggestion-card");
-
-  function fillBudgetOptions() {
-    const budgetSelect = document.getElementById("budget_level");
-    budgetSelect.innerHTML = R.COSTS
-      .map((label, i) => `<option value="${i}" ${i === 2 ? "selected" : ""}>${label}</option>`)
-      .join("");
-  }
-
-  function readContext() {
-    const data = new FormData(form);
-    return {
-      tripType: data.get("trip_type"),
-      energy: parseFloat(data.get("energy")),
-      budgetLevel: parseInt(data.get("budget_level"), 10),
-      party: data.get("party"),
-      indoorOutdoor: parseFloat(data.get("indoor_outdoor")),
-      moodAdventurous: parseFloat(data.get("mood_adventurous")),
-    };
-  }
 
   function renderEmpty(message) {
     resultsEl.innerHTML = `<p class="empty">${message}</p>`;
   }
 
-  function buildPips(container, name) {
-    let html = "";
-    for (let i = 1; i <= 5; i++) {
-      html += `<input type="radio" id="${name}-${i}" name="${name}" value="${i}">`
-        + `<label for="${name}-${i}">${i}</label>`;
-    }
-    container.innerHTML = html;
+  function optionLabel(option) {
+    return option.label || option.specific_attraction || option.main_destination || option.id;
   }
 
-  function wireLogForm(cardNode, option, context, onSaved) {
-    const openBtn = cardNode.querySelector("[data-open-log]");
-    const logForm = cardNode.querySelector(".log-form");
-    const pipsContainer = cardNode.querySelector(".rating-pips");
-    const uniqueName = "rating-" + option.id.replace(/[^A-Za-z0-9]/g, "");
-    buildPips(pipsContainer, uniqueName);
+  // ---- the review/log flow: also one question at a time, branching on the
+  // rating just given, exactly like the intake wizard above. ----
+  function startLogFlow(container, option, context) {
+    renderChoiceStep(container, "How was it?",
+      [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"]],
+      (ratingStr) => {
+        const rating = parseFloat(ratingStr);
+        if (rating <= 2) {
+          renderMultiChoiceStep(container, "What went wrong? (pick any)", [
+            ["too_expensive", "Too expensive"], ["too_far", "Too far / too long"],
+            ["not_as_expected", "Not what I expected"], ["closed", "Closed or unavailable"], ["other", "Other"],
+          ], (reasons) => askNotes(container, option, context, rating, "accepted_no_repeat", { wentWrong: reasons }));
+        } else if (rating >= 4) {
+          renderChoiceStep(container, "When would you want to do this again?", [
+            ["soon", "Soon — this week"], ["sometime", "Sometime — this month"],
+            ["someday", "Someday"], ["not_eager", "Probably not eager to repeat"],
+          ], (timing) => {
+            const action = timing === "not_eager" ? "accepted_no_repeat" : "accepted_repeat";
+            const extra = timing === "not_eager" ? {} : { recoveryTauDays: R.RECOVERY_TAU_PRESETS[timing] };
+            askNotes(container, option, context, rating, action, extra);
+          });
+        } else {
+          renderChoiceStep(container, "Would you do it again?", [["yes", "Yes"], ["no", "No"]], (answer) => {
+            askNotes(container, option, context, rating, answer === "yes" ? "accepted_repeat" : "accepted_no_repeat", {});
+          });
+        }
+      }
+    );
+  }
 
-    openBtn.addEventListener("click", () => {
-      logForm.hidden = false;
-      openBtn.parentElement.hidden = true;
-    });
-    cardNode.querySelector("[data-cancel-log]").addEventListener("click", () => {
-      logForm.hidden = true;
-      openBtn.parentElement.hidden = false;
-    });
-    cardNode.querySelector("[data-save-log]").addEventListener("click", async () => {
-      const ratingEl = logForm.querySelector(`input[name="${uniqueName}"]:checked`);
-      const repeatEl = logForm.querySelector('input[name="repeat"]:checked');
-      const notes = logForm.querySelector('textarea[name="notes"]').value.trim();
-      const rating = ratingEl ? parseFloat(ratingEl.value) : undefined;
-      const action = repeatEl
-        ? (repeatEl.value === "yes" ? "accepted_repeat" : "accepted_no_repeat")
-        : "skipped";
-      applyFeedback(STATE, option, context, action, rating, notes);
+  function askNotes(container, option, context, rating, action, extra) {
+    container.innerHTML = `
+      <h2 class="wizard-question">Anything to remember?</h2>
+      <label>Notes <span style="font-weight:400">(for you to read later -- not used in scoring)</span>
+        <textarea class="notes-input" placeholder="What you'd want to remember next time."></textarea>
+      </label>
+      <div class="actions"><button type="button" class="save-btn">Save</button></div>
+    `;
+    container.querySelector(".save-btn").addEventListener("click", async () => {
+      const notes = container.querySelector(".notes-input").value.trim();
+      applyFeedback(STATE, option, context, action, rating, notes, extra);
       await Storage.save(STATE);
-      logForm.innerHTML = "<p class=\"empty\">Saved -- thanks, this updates future suggestions.</p>";
-      if (onSaved) onSaved();
+      container.innerHTML = `<p class="empty">Saved -- thanks, this updates future suggestions.</p>`;
     });
   }
 
@@ -275,11 +487,19 @@
     for (const s of results) {
       const option = s.option;
       const node = cardTemplate.content.cloneNode(true);
-      node.querySelector(".label").textContent = option.label || option.specific_attraction || option.main_destination || option.id;
+      node.querySelector(".label").textContent = optionLabel(option);
       node.querySelector(".meta").textContent =
-        `${option.type || "?"} · ${option.cost || "?"} · ~${option.est_hours ?? "?"}h · score ${s.score?.toFixed(2) ?? ""}`;
+        `${option.type || "?"} · ${option.cost || "?"} (${COST_HINTS[option.cost] || "?"}) · ~${option.est_hours ?? "?"}h · score ${s.score?.toFixed(2) ?? ""}`;
       node.querySelector(".why").textContent = option.why_worth_it || "";
-      wireLogForm(node, option, context);
+
+      const feedbackDiv = node.querySelector(".feedback");
+      const openBtn = node.querySelector("[data-open-log]");
+      const logFlow = node.querySelector(".log-flow");
+      openBtn.addEventListener("click", () => {
+        feedbackDiv.hidden = true;
+        logFlow.hidden = false;
+        startLogFlow(logFlow, option, context);
+      });
       resultsEl.appendChild(node);
     }
   }
@@ -298,36 +518,20 @@
     itinerary.order.forEach((option, i) => {
       const card = document.createElement("article");
       card.className = "card";
-      const label = option.label || option.specific_attraction || option.main_destination || option.id;
-      card.innerHTML = `<h3>${i + 1}. ${label}</h3>
-        <p class="meta">${option.type || "?"} · ~${option.est_hours ?? "?"}h</p>
+      card.innerHTML = `<h3>${i + 1}. ${optionLabel(option)}</h3>
+        <p class="meta">${option.type || "?"} · ${option.cost || "?"} (${COST_HINTS[option.cost] || "?"}) · ~${option.est_hours ?? "?"}h</p>
         <p class="why">${option.why_worth_it || ""}</p>`;
       resultsEl.appendChild(card);
     });
   }
 
-  tripTypeEl.addEventListener("change", () => {
-    hoursField.hidden = tripTypeEl.value !== "custom";
-  });
-
-  document.getElementById("btn-suggest").addEventListener("click", () => {
-    renderEmpty("Thinking…");
-    const context = readContext();
-    const results = recommendNext(OPTIONS, context, STATE, 3); // top 3, per the brief
-    renderSuggestions(results, context);
-  });
-
-  document.getElementById("btn-plan").addEventListener("click", () => {
-    renderEmpty("Planning…");
-    const context = readContext();
-    const hours = parseFloat(form.elements["budget_hours"]?.value) || 8;
-    const itinerary = planTrip(OPTIONS, context, STATE, hours);
-    renderItinerary(itinerary);
-  });
+  // ====================================================================
+  // Boot
+  // ====================================================================
 
   async function boot() {
-    fillBudgetOptions();
     initContextSignals();
+    renderWizard();
     try {
       const res = await fetch("data/option_bank.json");
       OPTIONS = await res.json();
@@ -336,7 +540,6 @@
       return;
     }
     STATE = await Storage.load();
-    renderEmpty("Pick your preferences above, then hit Suggest or Plan.");
   }
 
   boot();

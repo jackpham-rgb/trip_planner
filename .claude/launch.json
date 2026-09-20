@@ -4,7 +4,7 @@
     {
       "name": "trip-planner-static",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8420"],
+      "runtimeArgs": ["tools/serve.py", "--port", "8420"],
       "port": 8420
     }
   ]

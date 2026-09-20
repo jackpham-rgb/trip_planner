@@ -65,7 +65,7 @@ nav.tabs a {
 }
 nav.tabs a.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
-#intake-form, .panel {
+#wizard, .panel {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -138,42 +138,44 @@ button.secondary {
 }
 button:disabled { opacity: 0.5; pointer-events: none; }
 
-/* ---- tap-based rating "pips" (1-5), same interaction as coffee-log.html ---- */
-.pips { display: flex; gap: 6px; }
-.pips input { position: absolute; opacity: 0; width: 0; height: 0; }
-.pips label {
-  flex: 1;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
-  font-size: 15px;
-  color: var(--muted);
-  cursor: pointer;
-  margin: 0;
-}
-.pips input:checked + label { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.pips input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ---- the one-question-at-a-time wizard (intake + the review log share this) ---- */
+.wizard-progress { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.25rem; }
+.wizard-question { font-size: 1.1rem; margin: 0 0 0.6rem; }
 
-/* ---- two/three-way toggle (yes/no, indoor/outdoor, ...) ---- */
-.toggle { display: flex; gap: 6px; }
-.toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
-.toggle label {
-  flex: 1;
-  padding: 0.6rem;
-  text-align: center;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
-  font-size: 0.85rem;
-  cursor: pointer;
-  margin: 0;
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
 }
-.toggle input:checked + label { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-.toggle input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+.choice-btn {
+  flex: none;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  width: 100%;
+}
+.choice-btn:hover { border-color: var(--accent); }
+.choice-btn.suggested { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* multi-select "chips" (e.g. "what went wrong", pick any number) */
+.choice-list.multi { flex-direction: row; flex-wrap: wrap; }
+.choice-list.multi .choice-btn {
+  width: auto;
+  text-align: center;
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+}
+.choice-btn.selected { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+.back-btn { margin-top: 0.25rem; width: 100%; }
+.step-text-input { margin-bottom: 0.6rem; }
 
 #results {
   margin-top: 1.25rem;
@@ -205,6 +207,7 @@ button:disabled { opacity: 0.5; pointer-events: none; }
 }
 
 .feedback { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.log-flow { margin-top: 0.6rem; }
 .feedback button {
   flex: none;
   font-size: 0.78rem;

@@ -71,6 +71,29 @@
     assert(keptLong.length === 1 && keptLong[0].id === "far");
   });
 
+  test("filter respects an explicit maxDwellHours override (the 'how far' question)", () => {
+    const opts = [
+      { id: "quick", source_sheet: "Cali", est_hours: 2 },
+      { id: "allday", source_sheet: "Cali", est_hours: 12 },
+    ];
+    const ctx = { tripType: "hangout_nearby", budgetLevel: 4, energy: 0.5, indoorOutdoor: 0, moodAdventurous: 0, maxDwellHours: 3 };
+    const kept = R.filterCandidates(opts, ctx, new Set());
+    assert(kept.length === 1 && kept[0].id === "quick");
+  });
+
+  test("filter respects an explicit preferredSheets override (the 'which region' question)", () => {
+    const opts = [
+      { id: "europe", source_sheet: "Europe" },
+      { id: "asia", source_sheet: "East Asia" },
+    ];
+    const ctx = {
+      tripType: "long_trip", budgetLevel: 4, energy: 0.5, indoorOutdoor: 0, moodAdventurous: 0,
+      preferredSheets: new Set(["Europe"]),
+    };
+    const kept = R.filterCandidates(opts, ctx, new Set());
+    assert(kept.length === 1 && kept[0].id === "europe");
+  });
+
   test("featurize: indoor/outdoor match is near-maximal when aligned", () => {
     const opt = { type: "Adventure", cost: "$$" };
     const ctxOutdoor = { tripType: "hangout_nearby", budgetLevel: 2, energy: 0.5, indoorOutdoor: 1.0, moodAdventurous: 0 };
@@ -189,6 +212,20 @@
     assert(rightAfter < muchLater);
     assert(muchLater > 0.9);
     assert(R.recoveryMultiplier(null, today) === 1.0);
+  });
+
+  test("recoveryTauDays override makes 'soon' recover faster than 'someday'", () => {
+    const today = new Date();
+    const checkIn = new Date(today); checkIn.setDate(checkIn.getDate() + 5);
+    const soon = R.recoveryMultiplier(
+      { status: "done_repeat", lastDone: today.toISOString().slice(0, 10), recoveryTauDays: R.RECOVERY_TAU_PRESETS.soon },
+      checkIn
+    );
+    const someday = R.recoveryMultiplier(
+      { status: "done_repeat", lastDone: today.toISOString().slice(0, 10), recoveryTauDays: R.RECOVERY_TAU_PRESETS.someday },
+      checkIn
+    );
+    assert(soon > someday, `expected 'soon' (${soon}) to have recovered further than 'someday' (${someday}) after the same 5 days`);
   });
 
   // ---- render ----

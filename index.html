@@ -17,72 +17,7 @@
 </header>
 
 <main id="app">
-  <form id="intake-form">
-    <label>
-      Trip type
-      <select name="trip_type" id="trip_type">
-        <option value="hangout_nearby">Just hanging out nearby</option>
-        <option value="day_trip">Day trip</option>
-        <option value="long_trip">Long trip</option>
-        <option value="custom">Custom duration</option>
-      </select>
-    </label>
-
-    <label>
-      Energy level
-      <select name="energy">
-        <option value="0.1">Wiped out</option>
-        <option value="0.3">Kind of tired</option>
-        <option value="0.5" selected>Normal</option>
-        <option value="0.7">Good energy</option>
-        <option value="0.9">Wired / raring to go</option>
-      </select>
-    </label>
-
-    <label>
-      Budget
-      <select name="budget_level" id="budget_level"></select>
-    </label>
-
-    <label>
-      Who's coming
-      <select name="party">
-        <option value="solo">Solo</option>
-        <option value="partner">Partner</option>
-        <option value="friends">Friends</option>
-        <option value="family">Family</option>
-      </select>
-    </label>
-
-    <label>
-      Indoor / outdoor
-      <select name="indoor_outdoor" id="indoor_outdoor">
-        <option value="-1">Indoor</option>
-        <option value="0" selected>No preference</option>
-        <option value="1">Outdoor</option>
-      </select>
-    </label>
-
-    <label>
-      Mood
-      <select name="mood_adventurous">
-        <option value="-1">Relaxed</option>
-        <option value="0" selected>No preference</option>
-        <option value="1">Adventurous</option>
-      </select>
-    </label>
-
-    <label id="hours-field" hidden>
-      Time budget (hours)
-      <input type="number" name="budget_hours" min="1" step="0.5" value="8">
-    </label>
-
-    <div class="actions">
-      <button type="button" id="btn-suggest">Suggest something</button>
-      <button type="button" id="btn-plan">Plan a trip</button>
-    </div>
-  </form>
-
+  <div id="wizard" class="panel"></div>
   <section id="results"></section>
 </main>
 
@@ -94,29 +29,7 @@
     <div class="feedback">
       <button type="button" data-open-log>Log what happened</button>
     </div>
-    <form class="log-form" hidden>
-      <div class="field">
-        <span class="field-label">How was it?</span>
-        <div class="pips rating-pips"></div>
-      </div>
-      <div class="field">
-        <span class="field-label">Would you do it again?</span>
-        <div class="toggle">
-          <input type="radio" name="repeat" value="yes" id="repeat-yes">
-          <label for="repeat-yes">Yes</label>
-          <input type="radio" name="repeat" value="no" id="repeat-no">
-          <label for="repeat-no">No</label>
-        </div>
-      </div>
-      <label>
-        Notes <span style="font-weight:400">(for you to read later -- not used in scoring)</span>
-        <textarea name="notes" placeholder="What you'd want to remember next time."></textarea>
-      </label>
-      <div class="actions">
-        <button type="button" class="secondary" data-cancel-log>Cancel</button>
-        <button type="button" data-save-log>Save</button>
-      </div>
-    </form>
+    <div class="log-flow" hidden></div>
   </article>
 </template>
 

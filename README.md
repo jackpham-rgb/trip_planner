@@ -11,10 +11,12 @@ Just a link.
 [Setup](#setup) below), or run it locally in thirty seconds:
 
 ```bash
-python -m http.server 8000    # any static file server works
+python tools/serve.py    # a static server with caching disabled -- see why below
 ```
 
-then open `http://localhost:8000/`.
+then open `http://localhost:8000/`. (Any static file server technically
+works, including `python -m http.server`; the difference is caching -- see
+the note in [Setup](#setup) before assuming bare `http.server` is fine.)
 
 - [`test.html`](test.html) -- the algorithm's own test suite, runnable in a browser tab
 - [`simulation.html`](simulation.html) -- a live chart of *why* a bandit beats guessing
@@ -23,11 +25,12 @@ then open `http://localhost:8000/`.
 
 ## 1. What this is
 
-Three multiple-choice-and-slider questions, then a ranked shortlist of real
-places pulled from a 279-entry option bank I built from my own travel
-spreadsheet (see [Data](#5-the-data)). Mark what I actually did and whether
-I'd repeat it, and the ranking quietly gets better -- without ever asking me
-to rate hundreds of things up front, and without me ever creating an account.
+A short, one-question-at-a-time intake -- tap an answer, the next question
+adapts to it -- then a ranked shortlist of real places pulled from a
+279-entry option bank I built from my own travel spreadsheet (see
+[Data](#5-the-data)). Mark what I actually did, how it went, and whether I'd
+repeat it, and the ranking quietly gets better -- without ever asking me to
+rate hundreds of things up front, and without me ever creating an account.
 
 It also plans a whole outing: give it a time budget and it returns an
 ordered stop list that fits, not just a single suggestion.
@@ -164,9 +167,33 @@ why that's not in this version.)*
   coordinates once, a free reverse-geocoding call turns that into a city/zip
   label (cheap, coarse, enough to sanity-check "does 'hangout nearby' make
   sense from here"), and a free weather call pre-fills the indoor/outdoor
-  question based on current temperature and precipitation. Both are just
-  starting points for the same dropdowns I could set myself -- never a
-  silent override.
+  question based on current temperature and precipitation. Both are
+  suggested starting points, highlighted but always tappable to override --
+  never a silent filter.
+- **"How far" is an actual question, not a hardcoded number.** Earlier
+  versions capped "hangout nearby"/"day trip" candidates at a fixed 30-hour
+  dwell time no matter what I actually wanted that day. Now the intake asks
+  directly -- close by, a bit of a trek, or the whole day -- and that answer
+  sets `context.maxDwellHours`, which `filterCandidates` respects instead of
+  the fixed cap. A long trip asks which region instead (Americas / Europe /
+  Asia / Middle East & Africa / anywhere), setting `context.preferredSheets`.
+  Both are optional overrides -- omitting them reproduces the old behavior,
+  which is also what keeps this backward-compatible with every existing test.
+- **Price tiers say what they mean.** `$` through `$$$$` come straight from
+  the workbook, but a bare dollar sign means nothing on its own -- Yelp
+  faces the same problem and solves it the same way: every price option is
+  shown with its rough range (`$$ -- $20-75`), and every result card repeats
+  it, so "can I afford this" never requires guessing what the workbook
+  author meant by "$$".
+- **The intake and the review are both a conversation, not a form.** Every
+  question is asked one at a time, and later questions depend on earlier
+  answers (`app.js`'s `intakeSteps()` -- trip type decides whether the next
+  question is "how far" or "which region"; the review log's next question
+  depends on the rating just given: a low rating asks what went wrong, a
+  high rating asks how soon I'd want to repeat it, a middle rating just asks
+  yes/no). This is more taps for a computer to render, but fewer decisions
+  in front of me at once -- the same trade every tinder-style or Typeform
+  intake makes over a long static form.
 
 ## 5. The data
 
@@ -260,11 +287,20 @@ anywhere" to work at all.
 ```bash
 git clone <this-repo>
 cd trip-planner
-python -m http.server 8000
+python tools/serve.py
 ```
 
 Open `http://localhost:8000/`. History saves to that browser's
 `localStorage` only.
+
+**Why `tools/serve.py` and not bare `python -m http.server`:** both serve
+the same files, but `http.server` sends no `Cache-Control` header, so the
+browser is free to keep serving an old cached copy of `styles.css`/`app.js`/
+`recommender.js` for a while after I've edited them -- confusing mid-
+development, and easy to mistake for a real bug. `tools/serve.py` is the
+exact same static server with one line added (`Cache-Control: no-store`) so
+what I see always matches what's on disk. GitHub Pages sets its own
+sensible caching headers, so this only matters for local testing.
 
 ### Your own Firebase project (for real cross-device sync)
 
@@ -377,6 +413,45 @@ which is the rare case where the "sounds nice academically" idea and the
 charts the regret curve in real time -- the "why a bandit" argument, shown
 instead of just asserted.
 
+**A round of Yelp-inspired UX changes came after the static-site pivot
+above, and one of them fixed something the algorithm had been quietly
+getting wrong.** The original intake was a single form with a fixed 30-hour
+dwell-time cap baked into "hangout nearby"/"day trip" filtering -- workable,
+but it meant *I* never actually said how far I was willing to go, the code
+just assumed. Turning the intake into one question at a time made that
+assumption visible as a real question ("how far are you willing to go?"),
+and answering it now sets `context.maxDwellHours` directly instead of
+falling back to a guess. The same rethink applied to price: `$` through
+`$$$$` meant nothing on their own without a legend, exactly the problem Yelp
+solves by showing a price's actual range next to the symbol -- so now this
+does too.
+
+**Branching the review log toward the *rating* rather than always asking
+the same three questions was the same idea applied to feedback, and it
+opened an actual algorithmic hook I hadn't planned for.** Asking "when would
+you want to do this again?" only when the rating is already high (4-5) means
+the answer -- soon / sometime / someday -- can set a *per-item* recovery
+tau instead of the one-size-fits-all 10-day default from Step 4. A place I
+rated 5 and said "soon" to now recovers three times faster in the
+suggestion pool than one I said "someday" to, which is a more honest model
+of how interest actually decays than a single global constant ever was --
+and it only exists because the question became conditional instead of fixed.
+
+**The most time-consuming bug in this pass wasn't in the code at all.**
+Testing the rewritten UI kept showing stale layouts and missing features
+after edits that were definitely saved to disk. The cause stacked three
+deep: the service worker from an earlier version was still precaching
+`styles.css` under its own cache key regardless of what the file now
+contained; separately, Python's bare `http.server` sends no `Cache-Control`
+header, so the browser kept a heuristically-cached copy of its own even
+after the service worker was cleared; and my local test tooling reuses
+browser tabs across a session, so "reload the page" didn't reliably mean
+"forget everything this origin has ever cached." None of that would confuse
+a judge opening the deployed link cold, but it's exactly the kind of thing
+that wastes an hour of *my own* testing time without a systematic way to
+rule it out -- which is why `tools/serve.py` (explicit no-store headers)
+exists now instead of just "run `python -m http.server` per the docs."
+
 ## Repository map
 
 ```
@@ -392,6 +467,7 @@ data/option_bank.json              -- the content: 279 real destinations (static
 tools/
   build_option_bank.py             -- offline: workbook -> option_bank.json
   schema.py                        -- the Option record + controlled vocabulary
+  serve.py                         -- local static server with caching disabled
   requirements.txt
 tests/
   test_data_loader.py              -- covers the one Python piece still shipped
