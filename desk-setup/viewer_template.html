@@ -1,0 +1,446 @@
+<title>Four-Mode Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-screen drafting bench. 3D stage fills the left, a title-block style spec sheet runs down the right; stacks on phones. */
+:root {
+  --bg: #e9ecea;
+  --sheet: #f8faf9;
+  --ink: #1b2220;
+  --muted: #5a6762;
+  --rule: #cdd5d1;
+  --accent: #1f5f8b;
+  --accent-ink: #ffffff;
+  --ok: #2f7d4f;
+  --bad: #b3261e;
+  --stage: #dfe4e1;
+  --chip: #e3e9e6;
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111514; --sheet: #171d1b; --ink: #e4eae7; --muted: #92a09a; --rule: #2a3330;
+    --accent: #7db6e3; --accent-ink: #0d1a24; --ok: #6cc58f; --bad: #f08a80; --stage: #1b2220; --chip: #222a27;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111514; --sheet: #171d1b; --ink: #e4eae7; --muted: #92a09a; --rule: #2a3330;
+  --accent: #7db6e3; --accent-ink: #0d1a24; --ok: #6cc58f; --bad: #f08a80; --stage: #1b2220; --chip: #222a27;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--f-body); }
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 400px; }
+.stage { position: relative; min-width: 0; background: var(--stage); }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.hud { position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; pointer-events: none; }
+.hud > * { pointer-events: auto; }
+.views { display: flex; flex-wrap: wrap; gap: 4px; background: color-mix(in srgb, var(--sheet) 88%, transparent); border: 1px solid var(--rule); border-radius: 6px; padding: 4px; }
+.views button, .toggle { font: 500 12px/1 var(--f-body); color: var(--ink); background: transparent; border: 0; border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+.views button[aria-pressed="true"] { background: var(--ink); color: var(--sheet); }
+.views button:focus-visible, .toggle:focus-visible, .modes button:focus-visible, .play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.caption { position: absolute; left: 16px; top: 14px; font: 600 13px/1.2 var(--f-mono); color: var(--muted); letter-spacing: .04em; pointer-events: none; }
+.caption b { color: var(--ink); font-weight: 500; }
+
+.sheet { min-width: 0; overflow-y: auto; background: var(--sheet); border-left: 1px solid var(--rule); padding: 20px 20px 28px; display: flex; flex-direction: column; gap: 22px; }
+.titleblock { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: end; border-bottom: 2px solid var(--ink); padding-bottom: 10px; }
+.titleblock h1 { margin: 0; font: 700 34px/0.95 var(--f-display); letter-spacing: .01em; text-transform: uppercase; text-wrap: balance; }
+.titleblock .sub { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
+.titleblock .rev { font: 500 11px/1.3 var(--f-mono); color: var(--muted); text-align: right; }
+
+h2 { margin: 0 0 8px; font: 600 15px/1.2 var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.modes button { text-align: left; border: 1px solid var(--rule); background: var(--sheet); color: var(--ink); border-radius: 6px; padding: 9px 10px; cursor: pointer; display: grid; gap: 2px; }
+.modes button .k { font: 500 11px/1 var(--f-mono); color: var(--muted); }
+.modes button .n { font: 600 18px/1.05 var(--f-display); letter-spacing: .02em; }
+.modes button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.modes button[aria-pressed="true"] .k { color: inherit; opacity: .8; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.play { font: 600 13px/1 var(--f-body); border: 1px solid var(--ink); background: transparent; color: var(--ink); border-radius: 6px; padding: 8px 12px; cursor: pointer; }
+.toggle { border: 1px solid var(--rule); background: var(--chip); }
+.toggle[aria-pressed="true"] { border-color: var(--ink); }
+.note { margin: 0; max-width: 62ch; }
+
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 0; font-variant-numeric: tabular-nums; }
+.kv div { padding: 5px 0; border-bottom: 1px solid var(--rule); }
+.kv div:nth-child(even) { text-align: right; font-family: var(--f-mono); font-size: 13px; }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.checks li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--rule); align-items: baseline; }
+.pill { font: 600 10px/1 var(--f-mono); letter-spacing: .06em; padding: 3px 0; border-radius: 3px; text-align: center; color: var(--sheet); background: var(--ok); }
+.pill.bad { background: var(--bad); }
+.checks .v { font: 500 12.5px/1.3 var(--f-mono); text-align: right; white-space: nowrap; }
+.checks .s { display: block; color: var(--muted); font-size: 12px; }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+th, td { text-align: left; padding: 6px 6px 6px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 600 11px/1.2 var(--f-mono); color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+td.num { font-family: var(--f-mono); text-align: right; white-space: nowrap; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.muted { color: var(--muted); }
+
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 62vh auto; height: auto; }
+  html, body { height: auto; }
+  .sheet { border-left: 0; border-top: 1px solid var(--rule); overflow: visible; padding-inline: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<div class="app">
+  <section class="stage" id="stage" aria-label="3D model of the desk">
+    <div class="caption" id="caption">MODE <b id="capMode">Monitor only</b></div>
+    <div class="hud">
+      <div class="views" role="group" aria-label="Camera">
+        <button id="v-over" aria-pressed="true" data-view="over">Overview</button>
+        <button id="v-seat" aria-pressed="false" data-view="seat">Seated eye</button>
+        <button id="v-back" aria-pressed="false" data-view="back">Behind desk</button>
+        <button id="v-basket" aria-pressed="false" data-view="basket">Basket</button>
+      </div>
+    </div>
+  </section>
+
+  <aside class="sheet">
+    <header class="titleblock">
+      <h1>Four-Mode Desk</h1>
+      <div class="rev">MAINSTAYS 36 IN<br>UNITS CM</div>
+      <div class="sub">Mainstays side-storage desk, AOC Q27G4XN on its own stand and a DIY riser, Dell 16 + WD19DCS. Every cable is drawn at its real routed length with its minimum bend radius.</div>
+    </header>
+
+    <section>
+      <h2>Mode</h2>
+      <div class="modes" id="modes"></div>
+      <div class="row">
+        <button class="play" id="play" aria-pressed="false">Play all four</button>
+        <button class="toggle" id="t-code" aria-pressed="true">Colour-code cables</button>
+        <button class="toggle" id="t-body" aria-pressed="true">Body envelope</button>
+        <button class="toggle" id="t-wall" aria-pressed="true">Wall</button>
+      </div>
+    </section>
+
+    <section>
+      <h2 id="modeTitle">Monitor only</h2>
+      <p class="note" id="modeNote"></p>
+    </section>
+
+    <section>
+      <h2>Checks in this mode</h2>
+      <ul class="checks" id="checks"></ul>
+    </section>
+
+    <section>
+      <h2>Cables</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Cable</th><th class="num">Routed</th><th class="num">Length</th><th class="num">Spare</th><th class="num">Bend</th></tr></thead>
+          <tbody id="cables"></tbody>
+        </table>
+      </div>
+      <p class="muted" style="margin:8px 0 0;font-size:12px">Bend is the tightest radius on the route; the minimum is 8 x cable diameter for data and 5 x for power. Spare length is tied into a loose coil at the ring shown in the model.</p>
+    </section>
+
+    <section>
+      <h2>Fit and setup numbers</h2>
+      <div class="kv" id="numbers"></div>
+    </section>
+
+    <section>
+      <h2>To build or buy</h2>
+      <ul class="plain">
+        <li><b>Riser</b>, 18 mm ply: top 600 x 230, two sides 230 x 62, back rail 564 x 25 (all mm). Glue and screw, felt pads. Leaves a 564 x 212 x 62 mm keyboard garage.</li>
+        <li><b>Printed laptop feet</b>, two 230 x 20 x 10 mm bars, so air reaches the Dell's bottom intake in the cubby.</li>
+        <li><b>Grounded US power strip</b> with a 1.5-2 m cord to replace the LiOA. The 5 m LiOA cord has no ground and leaves about 3.7 m coiled in the basket.</li>
+        <li><b>Inline cord switch</b> for the lamp. Its own switch sits on the plug, which ends up in the basket.</li>
+        <li><b>Footrest</b> about 10 cm high (DIY), because a 30 in desk puts the seat above your knee height.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Still assumed</h2>
+      <ul class="plain" id="assume">
+        <li>Desktop height 30.0 in. A tape from floor to desktop top would confirm it.</li>
+        <li>Basket width 10.5 in from the top-down photo; the tape read 6 in.</li>
+        <li>Cable lengths: monitor DP and AC 1.5 m, brick DC 1.8 m, brick AC 1.0 m.</li>
+        <li>Laptop + monitor mode needs about 17 cm free to the left of the desk for the USB-C bend.</li>
+        <li>Lamp arm lengths and the LiOA body size are measured off photos.</li>
+      </ul>
+    </section>
+  </aside>
+</div>
+
+<script type="application/json" id="spec">/*SPEC*/</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  const SPEC = JSON.parse(document.getElementById('spec').textContent);
+  const MODES = SPEC.modes;
+  const NOTES = {
+    monitor: 'Laptop closed in the cubby under the top shelf, on printed vented feet; the dock’s power button wakes it. Keyboard and mouse at the front. Lamp low on the keys from the left.',
+    dual: 'Laptop open on the top shelf, next to the monitor and level with it. Lamp folded upright behind it and off. The USB-C cable runs down the outside of the left edge.',
+    laptop: 'Laptop open at the front, monitor off. Keyboard and mouse slide into the riser garage. Lamp lights the laptop deck from the left.',
+    notebook: 'Keyboard and mouse in the riser garage, laptop in the cubby. 30.8 cm of clear depth for an open A4 notebook. Lamp over the page from the left, so your right hand does not shade the line you are writing.'
+  };
+  const SHORT = { monitor: 'Laptop docked', dual: 'Side by side', laptop: 'Monitor off', notebook: 'Screens away' };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- renderer
+  const stage = document.getElementById('stage');
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  stage.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1, 1, 4000);
+  camera.position.set(...SPEC.camera.pos);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(...SPEC.camera.target);
+  controls.enableDamping = true;
+  controls.maxDistance = 900; controls.minDistance = 20;
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x9a8a74, 0.6));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+  sun.position.set(160, 280, 240); sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -140, right: 160, top: 180, bottom: -40, near: 50, far: 800 });
+  sun.target.position.set(45, 60, 30); scene.add(sun.target); scene.add(sun);
+
+  function themeBg() {
+    const c = getComputedStyle(document.documentElement).getPropertyValue('--stage').trim() || '#dfe4e1';
+    renderer.setClearColor(new THREE.Color(c));
+  }
+  themeBg();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeBg);
+  new MutationObserver(themeBg).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // ---------- scene graph
+  const G = {};
+  for (const id in SPEC.groups) G[id] = { obj: new THREE.Group(), spec: SPEC.groups[id], meshes: [] };
+  for (const id in G) (G[id].spec.parent ? G[G[id].spec.parent].obj : scene).add(G[id].obj);
+  const UP = new THREE.Vector3(0, 1, 0);
+  const emissiveParts = [];
+  for (const p of SPEC.parts) {
+    const metal = /post|neck/i.test(p.name);
+    const mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(p.color), roughness: metal ? 0.25 : 0.78, metalness: metal ? 0.85 : 0.04,
+      transparent: p.opacity < 1, opacity: p.opacity, depthWrite: p.opacity >= 1
+    });
+    let mesh;
+    if (p.kind === 'box') {
+      mesh = new THREE.Mesh(new THREE.BoxGeometry(p.s[0], p.s[1], p.s[2]), mat);
+      mesh.position.set(p.c[0], p.c[1], p.c[2]);
+    } else if (p.kind === 'cyl') {
+      const a = new THREE.Vector3(...p.p1), b = new THREE.Vector3(...p.p2);
+      mesh = new THREE.Mesh(new THREE.CylinderGeometry(p.r2, p.r1, a.distanceTo(b), 28), mat);
+      mesh.position.copy(a).add(b).multiplyScalar(0.5);
+      mesh.quaternion.setFromUnitVectors(UP, b.clone().sub(a).normalize());
+    } else {
+      mesh = new THREE.Mesh(new THREE.SphereGeometry(p.r, 20, 14), mat);
+      mesh.position.set(p.c[0], p.c[1], p.c[2]);
+    }
+    mesh.castShadow = p.opacity >= 1 && !/Wall|Floor/.test(p.name);
+    mesh.receiveShadow = p.opacity >= 1;
+    mesh.userData.base = p.opacity;
+    if (p.emissive) emissiveParts.push({ mesh, map: p.emissive });
+    G[p.group].obj.add(mesh); G[p.group].meshes.push(mesh);
+  }
+  // lamp light
+  const spot = new THREE.SpotLight(0xfff1d6, 0, 160, 0.62, 0.55, 1.2);
+  spot.position.set(0, 13.4, 0); spot.castShadow = true; spot.shadow.mapSize.set(1024, 1024);
+  const spotT = new THREE.Object3D(); spotT.position.set(0, 60, 0);
+  G.lamp_head.obj.add(spot); G.lamp_head.obj.add(spotT); spot.target = spotT;
+
+  // ---------- cables
+  const BLACK = new THREE.Color('#131313');
+  const cables = SPEC.cables.map(c => {
+    const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(c.code), roughness: 0.5, metalness: 0.02 });
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat); mesh.castShadow = true;
+    const torus = new THREE.Mesh(new THREE.BufferGeometry(), mat); torus.castShadow = true;
+    scene.add(mesh); scene.add(torus);
+    return { c, mat, mesh, torus, pts: c.points[MODES[0]].map(p => new THREE.Vector3(...p)) };
+  });
+  const ZAX = new THREE.Vector3(0, 0, 1);
+  function drawCable(cb, pts, bundle) {
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    cb.mesh.geometry.dispose();
+    cb.mesh.geometry = new THREE.TubeGeometry(curve, 180, cb.c.od / 2, 8, false);
+    cb.torus.geometry.dispose();
+    if (bundle.R > 0.2) {
+      cb.torus.geometry = new THREE.TorusGeometry(bundle.R, bundle.r, 10, 40);
+      cb.torus.position.set(...bundle.c);
+      cb.torus.quaternion.setFromUnitVectors(ZAX, new THREE.Vector3(...bundle.axis).normalize());
+      cb.torus.visible = true;
+    } else { cb.torus.geometry = new THREE.BufferGeometry(); cb.torus.visible = false; }
+  }
+
+  // ---------- mode interpolation
+  const tmpQa = new THREE.Quaternion(), tmpQb = new THREE.Quaternion();
+  const col = (h) => h ? new THREE.Color(h) : new THREE.Color(0x000000);
+  function apply(a, b, t) {
+    for (const id in G) {
+      const g = G[id], pa = g.spec.poses[a], pb = g.spec.poses[b];
+      g.obj.position.set(
+        pa.pos[0] + (pb.pos[0] - pa.pos[0]) * t,
+        pa.pos[1] + (pb.pos[1] - pa.pos[1]) * t,
+        pa.pos[2] + (pb.pos[2] - pa.pos[2]) * t);
+      tmpQa.set(...pa.quat); tmpQb.set(...pb.quat);
+      g.obj.quaternion.copy(tmpQa).slerp(tmpQb, t);
+      const va = g.spec.visible[a] ? 1 : 0, vb = g.spec.visible[b] ? 1 : 0;
+      if (va !== 1 || vb !== 1) {
+        const k = va + (vb - va) * t;
+        for (const m of g.meshes) {
+          m.material.transparent = true; m.material.opacity = m.userData.base * k; m.visible = k > 0.02;
+        }
+      }
+    }
+    for (const e of emissiveParts) {
+      const c = col(e.map[a]).lerp(col(e.map[b]), t);
+      e.mesh.material.emissive = c; e.mesh.material.emissiveIntensity = 1;
+    }
+    const la = SPEC.lamp_on[a] ? 1.6 : 0, lb = SPEC.lamp_on[b] ? 1.6 : 0;
+    spot.intensity = la + (lb - la) * t;
+    for (const cb of cables) {
+      const A = cb.c.points[a], B = cb.c.points[b];
+      for (let i = 0; i < A.length; i++) {
+        cb.pts[i].set(A[i][0] + (B[i][0] - A[i][0]) * t, A[i][1] + (B[i][1] - A[i][1]) * t, A[i][2] + (B[i][2] - A[i][2]) * t);
+      }
+      const ba = cb.c.bundle[a], bb = cb.c.bundle[b];
+      drawCable(cb, cb.pts, { c: ba.c, axis: ba.axis, R: ba.R + (bb.R - ba.R) * t, r: ba.r + (bb.r - ba.r) * t });
+    }
+  }
+
+  let cur = MODES[0], anim = null;
+  const ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  function goMode(m) {
+    if (m === cur) return;
+    anim = { from: cur, to: m, t0: performance.now(), dur: reduce ? 1 : 1800 };
+    cur = m; updatePanel();
+  }
+
+  // ---------- camera views
+  let camAnim = null;
+  function personEye(m) {
+    const p = SPEC.groups.person.poses[m].pos;
+    const eye = SPEC.parts.find(x => x.name === 'Eye point').c;
+    return [p[0] + eye[0], eye[1], eye[2]];
+  }
+  const LOOK = { monitor: [59.5, 104, 26], dual: [38, 104, 28], laptop: [43, 88, 40], notebook: [57.5, 76.5, 46] };
+  function viewFor(v) {
+    if (v === 'seat') { const e = personEye(cur); return { pos: [e[0], e[1] + 1, e[2] + 6], tgt: LOOK[cur] }; }
+    if (v === 'back') return { pos: [30, 95, -150], tgt: [45, 55, 10] };
+    if (v === 'basket') return { pos: [-75, 70, 95], tgt: [12, 20, 30] };
+    return { pos: SPEC.camera.pos, tgt: SPEC.camera.target };
+  }
+  let view = 'over';
+  function setView(v) {
+    view = v;
+    document.querySelectorAll('.views button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === v)));
+    const to = viewFor(v);
+    if (v === 'back' && wallOn) setWall(false);
+    camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p1: new THREE.Vector3(...to.pos), t1: new THREE.Vector3(...to.tgt), s: performance.now(), dur: reduce ? 1 : 900 };
+  }
+  document.querySelectorAll('.views button').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+
+  // ---------- toggles
+  let wallOn = true;
+  function setWall(on) {
+    wallOn = on; document.getElementById('t-wall').setAttribute('aria-pressed', String(on));
+    G.room.meshes.forEach(m => { if (m.position.z < 0 && m.geometry.parameters.depth === 1 && m.geometry.parameters.height > 100) m.visible = on; });
+  }
+  document.getElementById('t-wall').addEventListener('click', () => setWall(!wallOn));
+  let coded = true;
+  document.getElementById('t-code').addEventListener('click', (e) => {
+    coded = !coded; e.currentTarget.setAttribute('aria-pressed', String(coded));
+    cables.forEach(cb => cb.mat.color.copy(coded ? new THREE.Color(cb.c.code) : BLACK));
+  });
+  let bodyOn = true;
+  document.getElementById('t-body').addEventListener('click', (e) => {
+    bodyOn = !bodyOn; e.currentTarget.setAttribute('aria-pressed', String(bodyOn));
+    G.person.obj.visible = bodyOn;
+  });
+
+  // ---------- panel
+  const modesEl = document.getElementById('modes');
+  MODES.forEach((m, i) => {
+    const b = document.createElement('button');
+    b.id = 'mode-' + m; b.setAttribute('aria-pressed', String(m === cur));
+    b.innerHTML = '<span class="k">' + SHORT[m] + '</span><span class="n">' + SPEC.mode_label[m] + '</span>';
+    b.addEventListener('click', () => { stopTour(); goMode(m); });
+    modesEl.appendChild(b);
+  });
+  const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  function updatePanel() {
+    MODES.forEach(m => document.getElementById('mode-' + m).setAttribute('aria-pressed', String(m === cur)));
+    document.getElementById('capMode').textContent = SPEC.mode_label[cur];
+    document.getElementById('modeTitle').textContent = SPEC.mode_label[cur];
+    document.getElementById('modeNote').textContent = NOTES[cur];
+    const list = SPEC.checks[cur].filter(c => !/^Cable /.test(c.name));
+    document.getElementById('checks').innerHTML = list.map(c =>
+      '<li><span class="pill' + (c.ok ? '' : ' bad') + '">' + (c.ok ? 'PASS' : 'FAIL') + '</span><span>' + esc(c.name) +
+      (c.note ? '<span class="s">' + esc(c.note) + '</span>' : '') + '</span><span class="v">' + esc(c.value) + ' ' + esc(c.unit) + '</span></li>').join('');
+    document.getElementById('cables').innerHTML = SPEC.cables.map(c => {
+      const ok = c.excess[cur] >= 0 && c.rmin[cur] >= c.rmin_req * 0.97;
+      return '<tr><td><span class="sw" style="background:' + c.code + '"></span>' + esc(c.name) + '</td>' +
+        '<td class="num">' + c.length[cur].toFixed(0) + '</td><td class="num">' + c.rated.toFixed(0) + '</td>' +
+        '<td class="num">' + c.excess[cur].toFixed(0) + '</td><td class="num">' + c.rmin[cur].toFixed(1) + ' / ' + c.rmin_req.toFixed(1) + (ok ? '' : ' !') + '</td></tr>';
+    }).join('');
+    if (view === 'seat') setView('seat');
+  }
+  const L = SPEC.loads;
+  const numbers = [
+    ['Seat height (gas lift)', L.seat_cm.toFixed(1) + ' cm'],
+    ['Footrest', L.footrest_cm.toFixed(1) + ' cm'],
+    ['Eye height', L.eye_cm.toFixed(1) + ' cm'],
+    ['Stand setting, top of panel above riser', L.stand_height_setting_cm.toFixed(1) + ' cm'],
+    ['Riser sag under monitor', L.riser_deflection_monitor_mm.toFixed(2) + ' mm'],
+    ['Riser sag, 250 N lean', L.riser_deflection_250N_mm.toFixed(2) + ' mm'],
+    ['Desktop load / rating', L.desktop_load_kg + ' / ' + L.desktop_rating_kg + ' kg'],
+    ['Top shelf load in dual / rating', L.top_shelf_load_dual_kg + ' / ' + L.shelf_rating_kg + ' kg'],
+    ['Strip current at 120 V / rating', L.strip_current_A_at_120V + ' / ' + L.strip_rating_A + ' A'],
+  ];
+  document.getElementById('numbers').innerHTML = numbers.map(([k, v]) => '<div>' + esc(k) + '</div><div>' + esc(v) + '</div>').join('');
+
+  // ---------- tour
+  let tour = null;
+  const playBtn = document.getElementById('play');
+  function stopTour() { if (tour) { clearInterval(tour); tour = null; playBtn.textContent = 'Play all four'; playBtn.setAttribute('aria-pressed', 'false'); } }
+  playBtn.addEventListener('click', () => {
+    if (tour) return stopTour();
+    playBtn.textContent = 'Stop'; playBtn.setAttribute('aria-pressed', 'true');
+    const next = () => goMode(MODES[(MODES.indexOf(cur) + 1) % MODES.length]);
+    next(); tour = setInterval(next, 3600);
+  });
+
+  // ---------- loop
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    renderer.setSize(r.width, r.height, false);
+    camera.aspect = r.width / Math.max(r.height, 1); camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stage); resize();
+  apply(cur, cur, 0); updatePanel();
+  function frame(now) {
+    if (anim) {
+      const t = Math.min(1, (now - anim.t0) / anim.dur);
+      apply(anim.from, anim.to, ease(t));
+      if (t >= 1) anim = null;
+    }
+    if (camAnim) {
+      const t = ease(Math.min(1, (now - camAnim.s) / camAnim.dur));
+      camera.position.lerpVectors(camAnim.p0, camAnim.p1, t);
+      controls.target.lerpVectors(camAnim.t0, camAnim.t1, t);
+      if (t >= 1) camAnim = null;
+    }
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
