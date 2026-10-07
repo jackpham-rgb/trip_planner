@@ -1,0 +1,94 @@
+seat 54.7 eye 132.7 footrest 10.2
+compare {"lid_top_above_desk": 24.3, "lid_top_z": 26.8, "eye_above_desk": 56.5, "stand_riser": {"face_z": 25.6, "bottom_needed": 23.6, "top_vs_eye": 3.8}, "arm": {"face_z": 17.4, "bottom_needed": 18.9, "bottom_set": 19.0, "top_vs_eye": -0.9}}
+arm {"monitor": {"pitch": 7.6, "elbow": [42.2, 4.6], "reach": 46.7, "vesa_above_desk": 35.0}, "dual": {"pitch": 7.6, "elbow": [41.6, 3.4], "reach": 47.3, "vesa_above_desk": 35.0}, "laptop": {"pitch": 7.6, "elbow": [41.6, 3.4], "reach": 47.3, "vesa_above_desk": 35.0}, "notebook": {"pitch": 7.6, "elbow": [41.6, 3.4], "reach": 47.3, "vesa_above_desk": 35.0}}
+
+== Monitor only - 32 checks, 0 fail
+  OK  Eye to screen centre                       62.1 cm  Mayo 50-100 cm
+  OK  Top of screen below eye                    1.8 cm  Mayo: at or slightly below eye
+  OK  Monitor screen hidden from eye             0.0 %  
+  OK  Laptop in cubby: air above lid             10.7 cm  
+  OK  Laptop vs shelf posts                      1.1 cm  
+  OK  Lamp shade vs monitor                      21.9 cm  
+  OK  Keyboard to mouse                          1.8 cm  
+  OK  Basket vs shelf posts                      0.3 cm  
+  OK  Brick vs strip in basket                   5.7 cm  
+  OK  Lamp pose: lower arm lean / upper arm drop 28 / 25 deg  natural: lean 15-45, drop -5..40
+  OK  Strip inside basket                        0.2 cm  
+  OK  Arm vs monitor back                        5.6 cm  
+  OK  Arm vs top shelf                           5.1 cm  
+  OK  Arm vs parked keyboard                     26.4 cm  
+  OK  Arm vs wall                                2.1 cm  
+  OK  Thigh top to frame rail                    1.7 cm  tight: crossed legs will not fit
+  OK  Thighs to dock                             23.1 cm  
+
+== Laptop + monitor - 35 checks, 0 fail
+  OK  Eye to screen centre                       67.4 cm  Mayo 50-100 cm
+  OK  Top of screen below eye                    1.8 cm  Mayo: at or slightly below eye
+  OK  Monitor screen hidden from eye             0.0 %  
+  OK  Laptop screen hidden from eye              0.0 %  
+  OK  Laptop lid to monitor face                 9.4 cm  
+  OK  Laptop to mouse                            3.9 cm  
+  OK  Parked keyboard under monitor: headroom    16.5 cm  
+  OK  Parked keyboard vs arm clamp               9.1 cm  
+  OK  Lamp shade vs monitor                      29.8 cm  
+  OK  Keyboard to mouse                          20.0 cm  
+  OK  Basket vs shelf posts                      0.3 cm  
+  OK  Brick vs strip in basket                   5.7 cm  
+  OK  Lamp pose: lower arm lean / upper arm drop 30 / 24 deg  natural: lean 15-45, drop -5..40
+  OK  Strip inside basket                        0.2 cm  
+  OK  Arm vs monitor back                        4.8 cm  
+  OK  Arm vs top shelf                           5.1 cm  
+  OK  Arm vs parked keyboard                     10.7 cm  
+  OK  Arm vs wall                                0.7 cm  
+  OK  Thigh top to frame rail                    1.7 cm  tight: crossed legs will not fit
+  OK  Thighs to dock                             23.1 cm  
+
+== Laptop only - 32 checks, 0 fail
+  OK  Laptop screen hidden from eye              0.0 %  
+  OK  Laptop lid to monitor face                 9.4 cm  
+  OK  Laptop to mouse                            3.9 cm  
+  OK  Parked keyboard under monitor: headroom    16.5 cm  
+  OK  Parked keyboard vs arm clamp               9.1 cm  
+  OK  Lamp shade vs monitor                      29.8 cm  
+  OK  Keyboard to mouse                          20.0 cm  
+  OK  Basket vs shelf posts                      0.3 cm  
+  OK  Brick vs strip in basket                   5.7 cm  
+  OK  Lamp pose: lower arm lean / upper arm drop 30 / 24 deg  natural: lean 15-45, drop -5..40
+  OK  Strip inside basket                        0.2 cm  
+  OK  Arm vs monitor back                        4.8 cm  
+  OK  Arm vs top shelf                           5.1 cm  
+  OK  Arm vs parked keyboard                     10.7 cm  
+  OK  Arm vs wall                                0.7 cm  
+  OK  Thigh top to frame rail                    1.7 cm  tight: crossed legs will not fit
+  OK  Thighs to dock                             23.1 cm  
+
+== Notebook + pens - 33 checks, 0 fail
+  OK  Laptop in cubby: air above lid             10.7 cm  
+  OK  Laptop vs shelf posts                      1.1 cm  
+  OK  Parked keyboard under monitor: headroom    16.5 cm  
+  OK  Parked keyboard vs arm clamp               9.1 cm  
+  OK  Clear writing depth                        39.9 cm  keyboard parked at the back
+  OK  Notebook hidden by lamp                    1.3 %  
+  OK  Lamp shade vs monitor                      18.5 cm  
+  OK  Keyboard to mouse                          0.8 cm  
+  OK  Basket vs shelf posts                      0.3 cm  
+  OK  Brick vs strip in basket                   5.7 cm  
+  OK  Lamp pose: lower arm lean / upper arm drop 22 / 23 deg  natural: lean 15-45, drop -5..40
+  OK  Strip inside basket                        0.2 cm  
+  OK  Arm vs monitor back                        4.8 cm  
+  OK  Arm vs top shelf                           5.1 cm  
+  OK  Arm vs parked keyboard                     10.7 cm  
+  OK  Arm vs wall                                0.7 cm  
+  OK  Thigh top to frame rail                    1.7 cm  tight: crossed legs will not fit
+  OK  Thighs to dock                             23.1 cm  
+dp     mon 63/150 r4.8 dua 57/150 r4.8 lap 57/150 r4.8 not 57/150 r4.8 
+ac     mon 98/150 r3.8 dua 92/150 r3.8 lap 92/150 r3.8 not 92/150 r3.8 
+usbc   mon 51/80 r5.5 dua 64/80 r5.5 lap 64/80 r5.5 not 51/80 r5.5 
+dc     mon 125/180 r2.8 dua 125/180 r2.8 lap 125/180 r2.8 not 125/180 r2.8 
+brac   mon 23/100 r3.7 dua 23/100 r3.7 lap 23/100 r3.7 not 23/100 r3.7 
+lamp   mon 92/152 r2.8 dua 92/152 r2.8 lap 92/152 r2.8 not 92/152 r2.8 
+strip  mon 136/500 r3.8 dua 136/500 r3.8 lap 136/500 r3.8 not 136/500 r3.8 
+monitor -> dual [{'item': 'AOC Q27G4XN', 'cm': 5.6}, {'item': 'Arm upper link (spring, height)', 'cm': 1.4}, {'item': 'Arm head + quick-release VESA', 'cm': 5.6}, {'item': 'Dell 16 DC16250', 'cm': 24.2}, {'item': 'Generic BT keyboard 44 x 13.5 x 2.5', 'cm': 30.6}, {'item': 'Generic BT mouse', 'cm': 2.0}]
+monitor -> laptop [{'item': 'AOC Q27G4XN', 'cm': 5.6}, {'item': 'Arm upper link (spring, height)', 'cm': 1.4}, {'item': 'Arm head + quick-release VESA', 'cm': 5.6}, {'item': 'Dell 16 DC16250', 'cm': 24.2}, {'item': 'Generic BT keyboard 44 x 13.5 x 2.5', 'cm': 30.6}, {'item': 'Generic BT mouse', 'cm': 2.0}]
+monitor -> notebook [{'item': 'AOC Q27G4XN', 'cm': 5.6}, {'item': 'Arm upper link (spring, height)', 'cm': 1.4}, {'item': 'Arm head + quick-release VESA', 'cm': 5.6}, {'item': 'Generic BT keyboard 44 x 13.5 x 2.5', 'cm': 30.6}, {'item': 'Generic BT mouse', 'cm': 33.5}, {'item': 'A4 notebook (open) + pens', 'cm': 1.3}]
+dual -> laptop []
