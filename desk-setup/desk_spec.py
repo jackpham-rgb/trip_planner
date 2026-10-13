@@ -4,7 +4,7 @@ Fusion model, its mode animation and the web viewer.
 Units: cm. Axes: x = left -> right (seated view), y = up, z = wall (0) -> user.
 Run: python desk_spec.py  -> writes desk_spec.json and prints the check report.
 """
-import json, math
+import os, json, math
 import numpy as np
 
 IN = 2.54
@@ -37,7 +37,7 @@ EYE_Y = SEAT + P['eye_above_seat']
 FOOTREST = round(SEAT - P['popliteal'], 1)
 CX = 64.0                       # monitor centre line (arm geometry, see ARM)
 UX = 62.0                       # where the user sits
-LX = 60.0                       # laptop centre in dual / laptop modes
+LX = W / 2                       # laptop centre in dual / laptop modes: middle of the desk
 
 # ---------------------------------------------------------------- math
 def v(*a): return np.array(a, dtype=float)
@@ -121,7 +121,7 @@ OX = 85.5
 oy0, oy1 = P['outlet_plate']
 box('room', 'Outlet plate', '#fbfbf8', OX - 3.5, OX + 3.5, oy0, oy1, 0, 0.5)
 SOCK_UP = v(OX, oy0 + 8.3, 0.5); SOCK_LO = v(OX, oy0 + 3.1, 0.5)
-for nm, s in (('Upper socket (monitor)', SOCK_UP), ('Lower socket (strip)', SOCK_LO)):
+for nm, s in (('Upper socket (free)', SOCK_UP), ('Lower socket (strip)', SOCK_LO)):
     box('room', nm, '#e9e9e4', s[0] - 1.8, s[0] + 1.8, s[1] - 1.6, s[1] + 1.6, 0.5, 0.75)
 
 group('desk', label='Desk - Mainstays side storage')
@@ -176,7 +176,9 @@ B_MON = 19.0                                                               # pan
 for m in MODES:
     pose('panel', m, (CX, TOP + B_MON, FACE[m]))
 GROUPS['panel']['moves'] = True
-AXP = v(25.4, TOP, Z0 + 5.5)                  # pole axis: ~39 cm left of the screen centre so the arm folds flat
+DOCK_MOUNT = os.environ.get('DOCK_MOUNT', 'outboard')   # outboard edge caps | inboard hanger | deck (standing, back-left corner)
+XD0 = 0.4                                     # deck option: left end of the standing dock
+AXP = v(XD0 + 20.5 + 2.0 + 5.6 + 6.0 if DOCK_MOUNT == 'deck' else 25.4, TOP, Z0 + 5.5)   # pole axis (deck: right of the dock's USB-C exit)
 group('arm', label='Arm clamp + pole (static)')
 box('arm', 'Clamp base', COL['arm'], AXP[0] - 5.5, AXP[0] + 5.5, TOP, TOP + 1.4, Z0 + 0.25, Z0 + 11.25, mat=M['black'])
 box('arm', 'Clamp body', COL['arm'], AXP[0] - 3.0, AXP[0] + 3.0, RAIL_Y0 - 1.4, TOP + 1.4, Z0 - 1.95, Z0, mat=M['black'])
@@ -187,10 +189,14 @@ S1 = AXP + v(0, ARM['post_pivot'], 0)
 L1_LEN = math.hypot(ARM['l1_run'], ARM['l1_rise'])
 group('arm_l1', pos=S1, label='Arm lower link (fixed incline, swivels)', moves=True)
 group('arm_l1b', parent='arm_l1', quat=q_axis((0, 0, 1), math.degrees(math.atan2(ARM['l1_rise'], ARM['l1_run']))))
-box('arm_l1b', 'Lower spring arm', COL['arm'], -1.0, L1_LEN + 0.8, -2.1, 2.1, -1.9, 1.9, mat=M['black'])
+box('arm_l1b', 'Lower spring arm', COL['arm'], 1.95, L1_LEN + 0.8, -2.1, 2.1, -1.9, 1.9, mat=M['black'])
 cyl('arm_l1', 'Elbow post', COL['arm'], (ARM['l1_run'], ARM['l1_rise'] - 1.0, 0), (ARM['l1_run'], ARM['elbow_top'] - ARM['post_pivot'], 0), 1.7, mat=M['black'])
 group('arm_l2', label='Arm upper link (spring, height)', moves=True)
 box('arm_l2', 'Upper arm', COL['arm'], -1.8, ARM['l2'] + 1.8, -2.2, 2.2, -2.0, 2.0, mat=M['black'])
+for t_ in (0.5, 0.8):     # zip ties holding the DP + monitor power cables under the arm links (move with the arm)
+    cyl('arm_l1b', 'Zip tie on lower link', '#111111', (t_ * L1_LEN - 0.2, -0.4, 0), (t_ * L1_LEN + 0.2, -0.4, 0), 3.4, mat=M['black'])
+for t_ in (0.2, 0.8):
+    cyl('arm_l2', 'Zip tie on upper arm', '#111111', (t_ * ARM['l2'] - 0.2, -0.4, 0), (t_ * ARM['l2'] + 0.2, -0.4, 0), 3.4, mat=M['black'])
 group('arm_head', label='Arm head + quick-release VESA', moves=True)
 box('arm_head', 'Tilt head', COL['arm'], -2.0, 2.0, -2.0, 2.0, -1.5, ARM['head'] - 2.6, mat=M['black'])
 cyl('arm_head', 'Quick-release hub', COL['arm'], (0, 0, ARM['head'] - 2.6), (0, 0, ARM['head'] - 0.4), 4.6, mat=M['black'])
@@ -216,31 +222,108 @@ def arm_ik(m):
                      vesa_above_desk=round(vesa[1] - TOP, 1))
 for m in MODES: arm_ik(m)
 
-# ---------------------------------------------------------------- dock under the desktop (printed bracket)
-group('dock', label='Dell WD19DCS on printed bracket')
-DK = dict(x=(34.0, 54.5), y=(UND - 5.4, UND - 2.5), z=(Z0 + 6.7, Z0 + 15.7))
-box('dock', 'Dock', COL['dock'], DK['x'][0], DK['x'][1], *DK['y'], *DK['z'], mat=M['black'])
-for xs in (35.0, 48.0):
-    box('dock', 'Bracket strap', COL['print'], xs, xs + 2, DK['y'][0] - 0.4, DK['y'][0], DK['z'][0] - 0.4, DK['z'][1] + 0.4)
-    box('dock', 'Bracket post', COL['print'], xs, xs + 2, DK['y'][0] - 0.4, UND, DK['z'][1], DK['z'][1] + 0.4)
-    box('dock', 'Bracket post', COL['print'], xs, xs + 2, DK['y'][0] - 0.4, UND, DK['z'][0] - 0.4, DK['z'][0])
+# ---------------------------------------------------------------- dock on the left edge (printed edge clamps)
+# Dorm desk: nothing screwed or stuck to it. Printables 902233 (Mearcat) "DELL WD19 / WD22 / K20A docking
+# station desk edge mount": two printed end caps hook over the edge and tighten from below with printed
+# screws (15-35 mm desktop; the left overhang is plain 1.8 cm desktop, no rail). The dock (9 x 2.9 cm case,
+# 20.5 cm long) stands on its long edge against the middle of the left edge, rear ports (DP, DC) facing the
+# floor, USB-C host cable out of the back end (toward the wall) through the cap.
+CAP_T = 0.3                       # 3 mm printed walls (stress check below)
+ZM = (Z0 + Z1) / 2
+MOUNT_PARTS = []
+if DOCK_MOUNT == 'outboard':
+    group('dock', label='Dell WD19DCS on printed desk-edge clamps, left edge (Printables 902233)')
+    DK = dict(x=(-CAP_T - 2.9, -CAP_T), y=(TOP - 9.6, TOP - 0.6), z=(ZM - 10.25, ZM + 10.25))
+    box('dock', 'Dock', COL['dock'], DK['x'][0], DK['x'][1], *DK['y'], *DK['z'], mat=M['black'])
+    for z0, z1 in ((DK['z'][0] - CAP_T, DK['z'][0] + 2.5), (DK['z'][1] - 2.5, DK['z'][1] + CAP_T)):
+        box('dock', 'Edge cap back', COL['print'], DK['x'][0] - CAP_T, DK['x'][0], DK['y'][0] - CAP_T, TOP + CAP_T, z0, z1)
+        box('dock', 'Edge cap top hook', COL['print'], DK['x'][0] - CAP_T, 2.5, TOP, TOP + CAP_T, z0, z1)
+        box('dock', 'Edge cap jaw', COL['print'], DK['x'][0] - CAP_T, 2.5, UND - 1.2, UND, z0, z1)
+        box('dock', 'Edge cap end wall', COL['print'], DK['x'][0] - CAP_T, 0, DK['y'][0] - CAP_T, TOP, *((z0, DK['z'][0]) if z0 < DK['z'][0] else (DK['z'][1], z1)))
+        cyl('dock', 'Printed clamp screw', COL['print'], (1.2, UND - 1.2, (z0 + z1) / 2), (1.2, UND - 3.5, (z0 + z1) / 2), 0.8)
+    MOUNT_PARTS = ['Edge cap back', 'Edge cap top hook', 'Edge cap jaw', 'Edge cap end wall', 'Printed clamp screw']
+elif DOCK_MOUNT == 'deck':
+    # dock stands on its front face on the desktop, back-left corner, between the back edge and the shelf post
+    # (behind the top shelf, so nothing above it); rear ports face up, USB-C host leaves the right end.
+    # Two small printed feet keep it upright (nothing attached to the desk).
+    group('dock', label='Dell WD19DCS standing on printed feet, back-left corner of the desktop')
+    FT = 0.4
+    DK = dict(x=(XD0, XD0 + 20.5), y=(TOP + FT, TOP + FT + 9.0), z=(Z0 + 0.4, Z0 + 0.4 + 2.9))
+    box('dock', 'Dock', COL['dock'], DK['x'][0], DK['x'][1], *DK['y'], *DK['z'], mat=M['black'])
+    for x0 in (DK['x'][0], DK['x'][1] - 2.5):
+        box('dock', 'Dock foot base', COL['print'], x0, x0 + 2.5, TOP, TOP + FT, Z0 + 0.1, DK['z'][1] + 3.0)
+        box('dock', 'Dock foot front lip', COL['print'], x0, x0 + 2.5, TOP + FT, TOP + 3.5, DK['z'][1], DK['z'][1] + FT)
+        box('dock', 'Dock foot back lip', COL['print'], x0, x0 + 2.5, TOP + FT, TOP + 3.5, DK['z'][0] - 0.3, DK['z'][0])
+    MOUNT_PARTS = ['Dock foot base', 'Dock foot front lip', 'Dock foot back lip']
+else:
+    # inboard hanger (remix of the same idea): a printed J-clip wraps the left edge (only its 5 mm outer wall is
+    # outside the desk) and carries a cradle UNDER the desktop overhang, so the dock hangs inside the desk
+    # outline, ports facing the floor. Two clips, one at each end of the dock; a printed thumb screw in the
+    # under-jaw clamps each clip to the 1.8 cm desktop.
+    group('dock', label='Dell WD19DCS in printed inboard edge hangers, left overhang')
+    HT = 0.5
+    DK = dict(x=(0.6, 3.5), y=(UND - 0.8 - 9.0, UND - 0.8), z=(ZM - 10.25, ZM + 10.25))
+    box('dock', 'Dock', COL['dock'], DK['x'][0], DK['x'][1], *DK['y'], *DK['z'], mat=M['black'])
+    for z0, z1 in ((DK['z'][0] - HT, DK['z'][0] + 2.5), (DK['z'][1] - 2.5, DK['z'][1] + HT)):
+        box('dock', 'Hanger top lip', COL['print'], -HT, 2.5, TOP, TOP + 0.4, z0, z1)
+        box('dock', 'Hanger edge wall', COL['print'], -HT, 0.0, UND - HT, TOP + 0.4, z0, z1)
+        box('dock', 'Hanger jaw', COL['print'], -HT, DK['x'][1] + HT, UND - HT, UND, z0, z1)
+        box('dock', 'Hanger outer cradle wall', COL['print'], DK['x'][0] - HT, DK['x'][0], DK['y'][0] - HT, UND - HT, z0, z1)
+        box('dock', 'Hanger inner cradle wall', COL['print'], DK['x'][1], DK['x'][1] + HT, DK['y'][0] - HT, UND - HT, z0, z1)
+        box('dock', 'Hanger cradle floor', COL['print'], DK['x'][0] - HT, DK['x'][1] + HT, DK['y'][0] - HT, DK['y'][0], z0, z1)
+        box('dock', 'Hanger end stop', COL['print'], DK['x'][0], DK['x'][1], DK['y'][0], DK['y'][0] + 2.0, *((z0, DK['z'][0]) if z0 < DK['z'][0] else (DK['z'][1], z1)))
+    MOUNT_PARTS = ['Hanger top lip', 'Hanger edge wall', 'Hanger jaw', 'Hanger outer cradle wall', 'Hanger inner cradle wall', 'Hanger cradle floor', 'Hanger end stop']
+TOP_LIP = {'outboard': 'Edge cap top hook', 'inboard': 'Hanger top lip', 'deck': 'Dock foot base'}[DOCK_MOUNT]
+DKX = (DK['x'][0] + DK['x'][1]) / 2
 DKY = (DK['y'][0] + DK['y'][1]) / 2
-DOCK_DP1 = v(42.0, DKY, DK['z'][0]); DOCK_DC = v(52.0, DKY, DK['z'][0]); DOCK_HOST = v(DK['x'][0], DKY, DK['z'][0] + 4.5)
+if DOCK_MOUNT == 'deck':
+    DKZ = (DK['z'][0] + DK['z'][1]) / 2
+    DOCK_DP1 = v(XD0 + 8.0, DK['y'][1], DKZ); DOCK_DC = v(XD0 + 15.5, DK['y'][1], DKZ); DOCK_HOST = v(DK['x'][1], DKY, DKZ)
+    PORT_OUT, HOST_DIR = (0, 1, 0), (1, 0, 0)
+else:
+    DOCK_DP1 = v(DKX, DK['y'][0], DK['z'][0] + 8.0); DOCK_DC = v(DKX, DK['y'][0], DK['z'][0] + 15.5); DOCK_HOST = v(DKX, DKY + 2.0, DK['z'][0])
+    PORT_OUT, HOST_DIR = (0, -1, 0), (0, 0, -1)
 
 # ---------------------------------------------------------------- basket, strip, brick (bottom shelf)
-group('basket', label='Basket (wicker, linen liner)')
-BK = dict(x=(POST_X1 + 0.3, POST_X1 + 0.3 + 6.0 * IN), y=(BS_Y1, BS_Y1 + 4.5 * IN), z=(SH_Z0 + 1.0, SH_Z0 + 1.0 + 17 * IN))
+group('basket', label='Basket 17 x 6 x 4.5 in (grey-white woven, cream linen liner)')
+BKZC = (SH_Z0 + SH_Z1) / 2      # centred front-to-back on the bottom shelf (the post blocks centring it side to side)
+BK = dict(x=(POST_X1 + 0.3, POST_X1 + 0.3 + 6.0 * IN), y=(BS_Y1, BS_Y1 + 4.5 * IN), z=(BKZC - 8.5 * IN, BKZC + 8.5 * IN))
 t = 0.6
-box('basket', 'Basket floor', COL['basket'], BK['x'][0], BK['x'][1], BK['y'][0], BK['y'][0] + t, *BK['z'], mat=M['fabric'])
-for nm, xs, zs in (('L', (BK['x'][0], BK['x'][0] + t), BK['z']), ('R', (BK['x'][1] - t, BK['x'][1]), BK['z']),
-                   ('back', BK['x'], (BK['z'][0], BK['z'][0] + t)), ('front', BK['x'], (BK['z'][1] - t, BK['z'][1]))):
-    box('basket', 'Basket wall ' + nm, COL['basket'], xs[0], xs[1], BK['y'][0], BK['y'][1], zs[0], zs[1], mat=M['fabric'])
-box('basket', 'Liner rim', COL['liner'], BK['x'][0], BK['x'][1], BK['y'][1] - 2.0, BK['y'][1] + 0.3, BK['z'][0] - 0.3, BK['z'][0] + 0.9, mat=M['liner'])
+box('basket', 'Basket floor', '#b9b2a6', BK['x'][0], BK['x'][1], BK['y'][0], BK['y'][0] + t, *BK['z'], mat='plain')
+# woven grey-white body (paper rope / seagrass look from the user's photo): rows of short strands in two tones,
+# offset every row; the cream linen liner folds over the top as a ~5 cm band and lines the inside.
+BAND = 5.0; WOV_Y1 = BK['y'][1] - BAND; ROWS = 5; rh = (WOV_Y1 - BK['y'][0]) / ROWS; SEG = 3.0
+TONES = ('#d9d2c6', '#8f887e', '#bdb5a8', '#cfc6b6')     # strand, shadow, strand variants
+def woven_side(nm, along, a0, a1, fixed, out):
+    """dark base wall + light strands 2.6 cm long with 0.4 cm gaps, offset half a strand every row."""
+    sgn = -1 if fixed == BK['x'][0] or fixed == BK['z'][0] else 1
+    base = (fixed, fixed + out); skin = (fixed + out, fixed + out + 0.12) if sgn > 0 else (fixed - 0.12, fixed)
+    if along == 'z': box('basket', 'Basket weave ' + nm, TONES[1], *base, BK['y'][0], WOV_Y1, a0, a1, mat='plain')
+    else: box('basket', 'Basket weave ' + nm, TONES[1], a0, a1, BK['y'][0], WOV_Y1, *base, mat='plain')
+    for r in range(ROWS):
+        y0 = BK['y'][0] + r * rh + 0.15; y1 = y0 + rh - 0.3; u = a0 + (SEG / 2 if r % 2 else 0) - SEG; k = 0
+        while u < a1:
+            u0, u1 = max(u + 0.2, a0), min(u + SEG - 0.2, a1)
+            if u1 - u0 > 0.4:
+                c = (TONES[0], TONES[2], TONES[3])[(k * 7 + r * 3) % 3]
+                if along == 'z': box('basket', 'Basket strand ' + nm, c, *skin, y0, y1, u0, u1, mat='plain')
+                else: box('basket', 'Basket strand ' + nm, c, u0, u1, y0, y1, *skin, mat='plain')
+            u += SEG; k += 1
+woven_side('L', 'z', BK['z'][0], BK['z'][1], BK['x'][0], t)
+woven_side('R', 'z', BK['z'][0], BK['z'][1], BK['x'][1] - t, t)
+woven_side('back', 'x', BK['x'][0] + t, BK['x'][1] - t, BK['z'][0], t)
+woven_side('front', 'x', BK['x'][0] + t, BK['x'][1] - t, BK['z'][1] - t, t)
+for nm, xs, zs in (('L', (BK['x'][0] - 0.15, BK['x'][0] + t), BK['z']), ('R', (BK['x'][1] - t, BK['x'][1] + 0.15), BK['z']),
+                   ('back', BK['x'], (BK['z'][0] - 0.15, BK['z'][0] + t)), ('front', BK['x'], (BK['z'][1] - t, BK['z'][1] + 0.15))):
+    box('basket', 'Liner fold ' + nm, COL['liner'], xs[0], xs[1], WOV_Y1, BK['y'][1] + 0.3, zs[0], zs[1], mat='plain')
+for nm, xs, zs in (('L', (BK['x'][0] + t, BK['x'][0] + t + 0.15), BK['z']), ('R', (BK['x'][1] - t - 0.15, BK['x'][1] - t), BK['z']),
+                   ('back', BK['x'], (BK['z'][0] + t, BK['z'][0] + t + 0.15)), ('front', BK['x'], (BK['z'][1] - t - 0.15, BK['z'][1] - t))):
+    box('basket', 'Liner inside ' + nm, COL['liner'], xs[0], xs[1], BK['y'][0] + t, WOV_Y1, zs[0], zs[1], mat='plain')
 FLOOR_Y = BK['y'][0] + t
 IX = (BK['x'][0] + t, BK['x'][1] - t); IZ = (BK['z'][0] + t, BK['z'][1] - t)
 PSI = 0.0; SL, SWD, SHT = 35.5, 5.5, 4.0
 sdir = v(-math.sin(math.radians(PSI)), 0, math.cos(math.radians(PSI)))
-back_c = v(IX[1] - SWD / 2 - 0.2, FLOOR_Y, IZ[0] + 6.25)
+back_c = v(IX[1] - SWD / 2 - 0.45, FLOOR_Y, IZ[0] + 5.8)
 group('strip', pos=back_c + sdir * SL / 2, quat=q_axis((0, 1, 0), -PSI), label='LiOA 6-outlet strip')
 box('strip', 'LiOA strip', COL['strip'], -SWD / 2, SWD / 2, 0, SHT, -SL / 2, SL / 2, mat=M['black'])
 OUTLET_COLORS = ['#1a1a1a', '#2f9e5b', '#2e5fb3', '#e6c229', '#c0392b', '#7a4a2a']
@@ -330,7 +413,7 @@ for r in range(5):
 group('mouse', label='Generic BT mouse', moves=True)
 box('mouse', 'Mouse', COL['kb'], -3.25, 3.25, 0, 3.8, -5.75, 5.75, mat=M['grey'])
 KB_DESK = (UX - 2.0, TOP, 44.0); MS_DESK = (UX + 25.0, TOP, 46.0)
-KB_PARK = (CX - 2.0, TOP, Z0 + 0.4 + 6.75); MS_PARK = (CX + 24.0, TOP, Z0 + 0.4 + 5.75)
+KB_PARK = (CX - 2.0, TOP, Z0 + 4.0 + 6.75); MS_PARK = (CX + 24.0, TOP, Z0 + 0.4 + 5.75)
 MS_SIDE = (LX + 25.0, TOP, 46.0)
 for m in MODES:
     pose('keyboard', m, KB_DESK if m == 'monitor' else KB_PARK)
@@ -416,66 +499,154 @@ def cable(cid, name, od, rated, k_bend, lead0, lead1, routes, bundle_at, bundle_
         pts, L = resample(dense, NPTS); ex = rated - L
         e['points'][m] = np.round(pts, 2).tolist(); e['length'][m] = round(L, 1); e['rmin'][m] = round(rmin, 2)
         e['excess'][m] = round(ex, 1); e['tight'][m] = list(TIGHT)
-        D = BUNDLE_D.get(cid, 10.0); turns = max(ex, 0) / (math.pi * D)
-        e['bundle'][m] = dict(c=list(map(float, bundle_at)), axis=list(map(float, bundle_axis)),
-                              R=D / 2 if turns > 0.2 else 0.0, r=round(od / 2 * max(1.0, math.sqrt(turns) * 1.15), 2),
-                              turns=round(turns, 1))
+        # spare-length coil: tangent to the cable at the route point nearest the storage hint, hanging toward the
+        # hint, coil plane normal to bundle_axis; inside the basket the coil is shrunk to fit between the walls
+        D = BUNDLE_D.get(cid, 10.0) if cid != 'usbc' else 0.0
+        hint = v(*bundle_at); ax0 = norm(v(*bundle_axis))
+        in_bk = lambda q: IX[0] <= q[0] <= IX[1] and IZ[0] <= q[2] <= IZ[1] and q[1] <= BK['y'][1]
+        cand = [i for i in range(len(pts)) if in_bk(pts[i])] if in_bk(hint) else list(range(len(pts)))
+        i0 = min(cand, key=lambda i: float(np.linalg.norm(pts[i] - hint)))
+        c0 = pts[i0]; t = norm(pts[min(i0 + 1, len(pts) - 1)] - pts[max(i0 - 1, 0)])
+        ax = ax0 - (ax0 @ t) * t; ax = norm(ax) if np.linalg.norm(ax) > 1e-6 else norm(np.cross(t, v(1, 0, 0)))
+        if in_bk(hint):                  # loose coils in the basket lie flat
+            ax = v(0, 1, 0); u = hint - c0; u[1] = 0.0
+            u = norm(u) if np.linalg.norm(u) > 1e-6 else v(1, 0, 0)
+        else:
+            u = (hint - c0) - ((hint - c0) @ ax) * ax - ((hint - c0) @ t) * t
+            u = norm(u) if np.linalg.norm(u) > 1e-6 else norm(np.cross(ax, t))
+        Rc = D / 2
+        if in_bk(hint) and Rc > 0:      # keep the ring inside the basket liner
+            e2 = np.cross(ax, u)
+            for _ in range(30):
+                rt = od / 2 * max(1.0, math.sqrt(max(ex, 0) / (math.pi * 2 * Rc)) * 1.15) + 0.3
+                ring = [c0 + u * Rc + Rc * (math.cos(a_) * u + math.sin(a_) * e2) for a_ in np.linspace(0, 2 * math.pi, 24, endpoint=False)]
+                if all(IX[0] + 0.15 + rt <= q[0] <= IX[1] - 0.15 - rt and IZ[0] + 0.15 + rt <= q[2] <= IZ[1] - 0.15 - rt for q in ring): break
+                Rc *= 0.92
+        turns = max(ex, 0) / (math.pi * max(2 * Rc, 1e-6)) if Rc > 0 else 0.0
+        on = Rc > 0 and turns > 0.2
+        e['bundle'][m] = dict(c=list(map(float, c0 + u * Rc)), axis=list(map(float, ax)), touch=list(map(float, c0)),
+                              tan=list(map(float, t)), R=round(Rc, 2) if on else 0.0,
+                              r=round(od / 2 * max(1.0, math.sqrt(turns) * 1.15), 2), turns=round(turns, 1))
     CABLES.append(e)
 
 G = Z0 - 1.1                      # cables hug the back face of the frame (clipped to it)
 def mon_port(n, m): return wpt('panel', m, (PORTS_LOCAL[n], 3.4, -3.65))
 dp_r, ac_r, usb_r, dc_r, brac_r, lamp_r, strip_r = {}, {}, {}, {}, {}, {}, {}
+def arm_way(m, s):
+    """Cable run tucked along the monitor arm, bottom to top: up the wall gap beside the arm clamp, over the
+    back edge, then under the lower link and under the upper arm (the pole is only 5.6 cm tall).
+    s = side offset (cm) so the two cables sit side by side; a zip tie holds them at each point."""
+    return [(AXP[0] + 6.8, TOP - 8.0, G - 1.5), (AXP[0] + 6.8, TOP + 9.0, Z0 + 1.0),
+            tuple(wpt('arm_l1b', m, (0.5 * L1_LEN, -3.6, s))), tuple(wpt('arm_l1b', m, (0.8 * L1_LEN, -3.6, s))), tuple(wpt('arm_l1b', m, (L1_LEN + 0.8, -2.6, s))),
+            tuple(wpt('arm_l2', m, (0.2 * ARM['l2'], -3.6, s))), tuple(wpt('arm_l2', m, (0.8 * ARM['l2'], -3.6, s)))]
+ANGLED_DIR = norm(v(0, 0.35, -1.0))    # 90-degree plugs: the cable leaves the plug heading back and up to the arm
+def angled_end(p): return tuple(v(*p) + PORT_DIR * 2.5)   # end of the angled plug body
+def port_drop(p, m):
+    """cable leaves the down-facing port, runs on under the rear body, then turns sideways and up to the arm."""
+    q = v(*p) + PORT_DIR * 16.0; hx = wpt('arm_head', m, (0, 0, 0))[0]
+    return [tuple(q), (q[0] + (11.0 if hx > q[0] else -11.0), q[1] - 1.0, q[2])]
 for m in MODES:
     dpp, acp = mon_port('DP', m), mon_port('AC', m)
     zv = DOCK_DP1[2] - 5.0 - 4.8
     # up the back of the frame, then tucked under the monitor's rear body (hidden by the panel's bottom edge)
-    dp_r[m] = (DOCK_DP1, (0, 0, -1), [(dpp[0] - 6.0, 78.0, G)] + ([(dpp[0], 90.5, G - 0.3)] if FACE[m] > 20 else []), dpp, PORT_DIR)
-    ac_r[m] = (SOCK_UP, (0, 0, 1), [(OX, 40.0, Z0 + 1.9), (76.0, 58.0, G), (acp[0] + 5.0, 78.0, G)] + ([(acp[0], 90.0, G - 0.3)] if FACE[m] > 20 else []), acp, PORT_DIR)
+    dp_r[m] = (DOCK_DP1, PORT_OUT, ([(XD0 + 11.0, TOP + 17.0, Z0 + 0.6)] + arm_way(m, 0.8)[1:]) if DOCK_MOUNT == 'deck' else
+               ([(3.0, 55.0, DOCK_DP1[2] - 6.0), (6.0, 57.0, 8.0), (16.0, 61.0, G), (22.0, 63.6, 6.1)] + arm_way(m, 0.8)), angled_end(dpp), ANGLED_DIR)
+    ac_r[m] = (outlets[2], (0, 1, 0), [(20.8, BK['y'][1] + 2.6, IZ[0] + 0.2), (20.3, 30.0, G)] + arm_way(m, -0.8), angled_end(acp), ANGLED_DIR)
     lp = wpt('laptop', m, USBC_LOCAL); ld = wdir('laptop', m, (-1, 0, 0))
-    if m in ('monitor', 'notebook'):
-        way = [(DOCK_HOST[0] - 8.0, 63.0, 10.0), (lp[0] + 0.4, 63.0, 1.6), (lp[0] + 0.1, lp[1], 1.6)]
+    if DOCK_MOUNT == 'deck':
+        way = [(DK['x'][1] + 7.0, TOP + 2.0, Z0 + 9.0)] if m in ('monitor', 'notebook') else [(DK['x'][1] + 6.0, TOP + 1.0, Z0 + 10.0), (lp[0] - 12.0, TOP + 0.55, lp[2] - 9.0)]
+    elif m in ('monitor', 'notebook'):
+        way = [(3.0, 70.0, 12.0), (lp[0] + 0.4, 62.0, 1.6), (lp[0] + 0.1, lp[1], 1.6)]
     else:
-        way = [(DOCK_HOST[0] - 7.5, DKY - 2.0, G + 0.6), (34.4, TOP + 1.4, G + 0.8), (34.6, TOP + 0.55, Z0 + 9.0), (lp[0] - 10.6, TOP + 0.55, lp[2] - 9.0)]
-    usb_r[m] = (DOCK_HOST, (-1, 0, 0), way, lp, ld)
+        way = ([(-2.5, UND - 4.0, DK['z'][0] - 5.0)] if DOCK_MOUNT == 'inboard' else []) + [(min(DKX - 1.0, -2.5), TOP + 6.0, DK['z'][0] - 14.0), (6.0, TOP + 9.0, DK['z'][0] - 8.0), (14.0, TOP + 0.55, DK['z'][0] + 3.0), (lp[0] - 12.0, TOP + 0.55, lp[2] - 9.0)]
+    usb_r[m] = (DOCK_HOST, HOST_DIR, way, lp, ld)
     zdc = DOCK_DC[2] - 5.5 - 2.75
-    dc_r[m] = (BRICK_DC, (0, 0, 1), [(BRX, BK['y'][1] + 0.8, BRICK_DC[2] + 5.3), (BRX + 1.0, BK['y'][1] + 1.0, IZ[0] + 1.5), (BRX + 1.0, BK['y'][1] + 1.7, IZ[0] - 1.6), (BRX + 1.0, 28.0, G), (30.0, 56.0, G), (DOCK_DC[0], DKY - 7.0, zdc)], DOCK_DC, (0, 0, -1))
+    dc_r[m] = (BRICK_DC, (0, 0, 1), [(BRX, BK['y'][1] + 0.8, BRICK_DC[2] + 5.3), (BRX + 1.0, BK['y'][1] + 1.0, IZ[0] + 1.5), (BRX + 1.0, BK['y'][1] + 1.7, IZ[0] - 1.6), (BRX + 1.0, 28.0, G), (BRX + 1.0, 57.0, G)] + ([(XD0 + 18.0, TOP + 8.0, 2.0), (XD0 + 16.0, TOP + 16.0, Z0 + 0.8)] if DOCK_MOUNT == 'deck' else [(6.0, 58.5, 8.0), (3.0, 59.0, DOCK_DC[2] - 9.0)]), DOCK_DC, PORT_OUT)
     brac_r[m] = (BRICK_AC, (0, 0, -1), [(outlets[0][0] - 6.2, outlets[0][1] + 4.75, outlets[0][2] - 0.5)], outlets[0], (0, 1, 0))
-    lamp_r[m] = (LB_C + v(0, 0.8, -8.6), (0, 0, -1), [(LB_C[0], 84.0, 7.0), (10.0, 70.0, G), (19.5, 30.0, G),
+    lamp_r[m] = (LB_C + v(0, 0.8, -8.6), (0, 0, -1), [(LB_C[0], 90.0, 3.0) if DOCK_MOUNT == 'deck' else (LB_C[0], 84.0, 7.0), (10.0, 70.0, G), (19.5, 30.0, G),
                  (20.0, BK['y'][1] + 2.6, IZ[0] + 0.2)], outlets[1], (0, 1, 0))
-    sv = STRIP_CORD + STRIP_CORD_DIR * (2.0 + 3.75)
+    sv = STRIP_CORD + STRIP_CORD_DIR * (1.5 + 3.75)
     strip_r[m] = (STRIP_CORD, STRIP_CORD_DIR, [(sv[0], BK['y'][1] + 4.4, sv[2]), (sv[0], BK['y'][1] + 4.4, sv[2] - 7.6),
                   (sv[0] + 0.2, 4.0, sv[2] - 7.6), (80.0, 0.45, 6.0), (OX, 0.45, SOCK_LO[2] + 8.0 + 3.75)], SOCK_LO, (0, 0, 1))
-cable('dp', 'DP 1.4, dock -> monitor', 0.6, 150, 8, 5.0, 5.0, dp_r, (50.0, 64.0, G - 0.6), (0, 0, 1), '#e63946',
-      'length assumed 1.5 m', 'coil velcroed to the back rail')
-cable('ac', 'Monitor AC (grounded), upper wall socket -> monitor', 0.75, 150, 5, 4.0, 5.5, ac_r, (72.0, 63.0, G), (0, 0, 1), '#f77f00',
-      'length assumed 1.5 m', 'coil velcroed to the X-brace')
+cable('dp', 'DP 1.4, dock -> monitor (90-degree plug at the monitor)', 0.6, 183, 8, 5.0, 1.5, dp_r, (22.0, 56.0, 6.4), (0, 0, 1), '#e63946',
+      'buy: 6 ft DP 1.4 with a 90-degree plug at the monitor end', 'zip-tied along the arm; spare coil velcroed to the X-brace behind the desk')
+cable('ac', 'Monitor AC (grounded), strip outlet 3 -> along the arm -> monitor (right-angle C13)', 0.75, 183, 5, 4.0, 1.5, ac_r, (20.2, 31.0, 30.0), (0, 1, 0), '#f77f00',
+      'buy: 6 ft right-angle IEC C13 cord', 'zip-tied along the arm; spare coil left in the basket next to the strip')
 cable('usbc', 'WD19DCS USB-C (0.8 m, fixed)', 0.7, 80, 8, 2.0, 4.5, usb_r, (16.5, 66.0, G + 0.4), (0, 0, 1), '#3a86ff',
       'spec 0.8 m', 'loose slack loop hangs behind the desk; it feeds out when the laptop moves')
 cable('dc', '240 W brick DC -> dock', 0.55, 180, 5, 2.5, 5.5, dc_r, (20.2, FLOOR_Y + 8.5, 44.5), (0, 1, 0), '#ffbe0b', 'length assumed 1.8 m', 'coil in the basket')
 cable('brac', '240 W brick AC -> strip outlet 1', 0.75, 100, 5, 4.0, 1.0, brac_r, (20.2, FLOOR_Y + 9.7, 44.5), (0, 1, 0), '#ffd166', 'length assumed 1.0 m', 'coil in the basket')
 cable('lamp', 'Lamp cord (5 ft) -> strip outlet 2', 0.55, 152.4, 5, 1.5, 1.0, lamp_r, (20.2, FLOOR_Y + 7.3, 44.5), (0, 1, 0), '#2a9d8f', 'switch is on the plug', 'coil in the basket')
-cable('strip', 'LiOA strip cord (5 m) -> lower wall socket', 0.75, 500, 5, 2.0, 8.0, strip_r, (20.2, FLOOR_Y + 5.5, 44.5), (0, 1, 0), '#8338ec', '5 m cord', 'coil in the basket')
+cable('strip', 'LiOA strip cord (5 m) -> lower wall socket', 0.75, 500, 5, 1.5, 8.0, strip_r, (20.2, FLOOR_Y + 5.5, 44.5), (0, 1, 0), '#8338ec', '5 m cord', 'coil in the basket')
+
+def basket_rest_y(x, z):
+    h = FLOOR_Y
+    sc = wpt('strip', 'monitor', (0, 0, 0))
+    if abs(x - sc[0]) <= SWD / 2 and abs(z - sc[2]) <= SL / 2: h = max(h, FLOOR_Y + SHT)
+    for cz in OUT_Z[:3]:                                     # plugs in outlets 1-3 stand 3 cm proud
+        if abs(x - sc[0]) <= 1.6 and abs(z - (sc[2] + cz)) <= 1.8: h = max(h, FLOOR_Y + SHT + 3.0)
+    if BR['x'][0] <= x <= BR['x'][1] and BR['z'][0] <= z <= BR['z'][1]: h = max(h, BR['y'][1])
+    return h
+# Coils kept in the basket: packed one by one into the free spot nearest the cable's own path in the basket,
+# each lying flat on whatever is below it (floor, strip, plugs, brick, coils placed before it), never
+# touching the liner walls. Same packing for every mode (the basket contents do not move).
+PLACED = []
+def rest_y(x, z):
+    h = basket_rest_y(x, z)
+    for c_, R_, r_ in PLACED:
+        if abs(math.hypot(x - c_[0], z - c_[2]) - R_) <= r_ + 0.05: h = max(h, c_[1] + r_)
+    return h
+for cb in CABLES:
+    bd0 = cb['bundle']['monitor']
+    if bd0['R'] <= 0 or abs(bd0['axis'][1]) < 0.9: continue
+    if not (IX[0] <= bd0['touch'][0] <= IX[1] and IZ[0] <= bd0['touch'][2] <= IZ[1]): continue
+    D = BUNDLE_D.get(cb['id'], 10.0); ex = cb['excess']['monitor']
+    pin = np.array([q for q in cb['points']['monitor'] if IX[0] <= q[0] <= IX[1] and IZ[0] <= q[2] <= IZ[1] and q[1] <= BK['y'][1] + 2])
+    best = None
+    for Rc in (D / 2, D / 2 * 0.85, D / 2 * 0.7, D / 2 * 0.55):
+        turns = ex / (math.pi * 2 * Rc); r_ = od_ = cb['od'] / 2 * max(1.0, math.sqrt(turns) * 1.15)
+        lo_x, hi_x = IX[0] + 0.25 + Rc + r_, IX[1] - 0.25 - Rc - r_
+        lo_z, hi_z = IZ[0] + 0.25 + Rc + r_, IZ[1] - 0.25 - Rc - r_
+        if lo_x > hi_x or lo_z > hi_z: continue
+        for x_ in np.linspace(lo_x, hi_x, 5):
+            for z_ in np.linspace(lo_z, hi_z, 15):
+                ring = [v(x_ + (Rc + k * r_) * math.cos(a_), 0, z_ + (Rc + k * r_) * math.sin(a_)) for k in (-1, 0, 1) for a_ in np.linspace(0, 2 * math.pi, 36, endpoint=False)]
+                y_ = max(rest_y(q[0], q[2]) for q in ring) + r_ + 0.05
+                if y_ + r_ > BK['y'][1] + 1.0: continue                 # must stay below the rim
+                dr = float(np.min(np.linalg.norm(pin - v(x_, y_, z_), axis=1))) if len(pin) else 0.0
+                score = abs(dr - Rc) + 0.3 * (y_ - FLOOR_Y)
+                if best is None or score < best[0]: best = (score, v(x_, y_, z_), Rc, r_, turns)
+        if best: break
+    if not best: continue
+    _, c_, Rc, r_, turns = best
+    PLACED.append((c_, Rc, r_))
+    pin_d = np.linalg.norm(pin - c_, axis=1); tq = pin[int(np.argmin(np.abs(pin_d - Rc)))] if len(pin) else c_
+    for m in MODES:
+        bd = cb['bundle'][m]
+        bd.update(c=list(map(float, c_)), axis=[0.0, 1.0, 0.0], R=round(Rc, 2), r=round(r_, 2), turns=round(turns, 1))
+        tdir = tq - c_; tdir[1] = 0; tdir = norm(tdir) if np.linalg.norm(tdir) > 1e-6 else v(1, 0, 0)
+        bd['touch'] = list(map(float, c_ + tdir * Rc)); bd['tan'] = list(map(float, np.cross(v(0, 1, 0), tdir)))
 
 # ---------------------------------------------------------------- cable management hardware
-group('cable_mgmt', label='Cable management: adhesive clips + velcro ties')
+group('cable_mgmt', label='Cable management: zip ties on frame + arm, velcro on spare coils (nothing stuck to the desk)')
 def clip(name, p, axis='x'):
     p = v(*p)
     box('cable_mgmt', name, '#2b2b2b', p[0] - 1.2, p[0] + 1.2, p[1] - 0.9, p[1] + 0.9, p[2] - 0.9, p[2] + 0.9, mat=M['black'])
 def tie(name, c, r, axis):
     cyl('cable_mgmt', name, '#202020', v(*c) - v(*axis) * 0.6, v(*c) + v(*axis) * 0.6, r, mat=M['fabric'])
 RAIL_MID = (RAIL_Y0 + UND) / 2
-for cid in ('dp', 'ac', 'dc'):
-    cb = next(c for c in CABLES if c['id'] == cid)
+for cb in CABLES:              # zip tie wherever a cable passes behind the back rail or the left back post
     pts = np.array(cb['points']['dual'])
-    near = pts[np.argmin(np.abs(pts[:, 1] - RAIL_MID) + 5 * (np.abs(pts[:, 2] - G) > 1.5))]
-    clip('Clip on back rail (%s)' % cid, (near[0], RAIL_MID, Z0 - 0.4))
-cbu = next(c for c in CABLES if c['id'] == 'usbc'); pu = np.array(cbu['points']['monitor'])
-clip('Clip under desktop (usbc)', pu[np.argmin(np.abs(pu[:, 1] - 70.5) + np.abs(pu[:, 2] - 10.0))] + v(0, 0.9, 0))
+    for nm, lo, hi in (('back rail', v(POST_X1, RAIL_Y0, Z0 - 2.5), v(W - 2, UND, Z0)), ('left back post', v(POST_X0, 30.0, Z0 - 2.5), v(POST_X1, MS_Y0, POST_ZB[0]))):
+        ins = [q for q in pts if np.all(q >= lo) and np.all(q <= hi)]
+        if ins:
+            q = ins[len(ins) // 2]
+            clip('Zip tie on %s (%s)' % (nm, cb['id']), (q[0], q[1], q[2]))
 for cb in CABLES:
     bd = cb['bundle']['dual']
     if bd['R'] > 0.2:
-        tie('Velcro tie (%s coil)' % cb['id'], v(*bd['c']) + v(*norm(np.cross(v(*bd['axis']), v(0, 0, 1) if abs(bd['axis'][2]) < 0.9 else v(1, 0, 0)))) * bd['R'],
-            bd['r'] + 0.25, (1, 0, 0) if abs(bd['axis'][0]) < 0.9 else (0, 1, 0))
+        tc = v(*bd['touch']) + (v(*bd['c']) - v(*bd['touch'])) / max(bd['R'], 1e-6) * bd['r']   # wraps coil + cable
+        tie('Velcro tie (%s coil)' % cb['id'], tc, bd['r'] * 2 + 0.3, tuple(bd['tan']))
 
 # ---------------------------------------------------------------- geometry queries for checks
 def parts_named(name): return [p for p in PARTS if p['name'] == name]
@@ -561,7 +732,7 @@ def occlusion(m, screen_part, blockers, eye):
 
 # ---------------------------------------------------------------- cable visibility from the seated eye
 BLOCK = ['Desktop', 'Top shelf', 'Middle shelf', 'Bottom shelf', 'Panel shell', 'Rear body', 'Laptop base', 'Laptop lid',
-         'Basket wall front', 'Basket wall L', 'Basket wall R', 'Rail front', 'Rail left', 'Left post front', 'Right leg front',
+         'Liner fold front', 'Liner fold L', 'Liner fold R', 'Rail front', 'Rail left', 'Left post front', 'Right leg front',
          'Dock', 'Keyboard', 'Notebook', 'Lamp base', 'LiOA strip', 'Dock power brick 240 W', 'Thighs']
 def visible_cable(m, n=40):
     f = [sdf_fn(b, m) for b in BLOCK if parts_named(b) and GROUPS[parts_named(b)[0]['group']]['visible'][m]]
@@ -613,15 +784,15 @@ for m in MODES:
         add('Notebook hidden by lamp', occ, occ < 3, unit='%')
     add('Lamp shade vs monitor', gap('Lamp shade', 'Panel shell', m), gap('Lamp shade', 'Panel shell', m) >= 1.0)
     add('Keyboard to mouse', gap('Keyboard', 'Mouse', m), gap('Keyboard', 'Mouse', m) >= 0.5)
-    add('Basket vs shelf posts', min(gap('Basket wall L', 'Left post back', m), gap('Basket floor', 'Left post back', m)), min(gap('Basket wall L', 'Left post back', m), gap('Basket floor', 'Left post back', m)) >= 0.2)
+    add('Basket vs shelf posts', min(gap('Liner fold L', 'Left post back', m), gap('Basket floor', 'Left post back', m)), min(gap('Liner fold L', 'Left post back', m), gap('Basket floor', 'Left post back', m)) >= 0.2)
     add('Brick vs strip in basket', gap('Dock power brick 240 W', 'LiOA strip', m), gap('Dock power brick 240 W', 'LiOA strip', m) >= 0.5)
     lp = LAMP_POSE[m]
     add('Lamp pose: lower arm lean / upper arm drop', '%.0f / %.0f' % (lp['lower_lean'], lp['upper_below_horizontal']),
         15 <= lp['lower_lean'] <= 45 and -5 <= lp['upper_below_horizontal'] <= 40, unit='deg', note='natural: lean 15-45, drop -5..40')
     vis = visible_cable(m)
     add('Cable visible from the seat', vis['total'], True, note=', '.join('%s %.0f' % (k, v_) for k, v_ in vis['by'].items() if v_ >= 1) or 'none')
-    add('Strip inside basket', min(gap('LiOA strip', 'Basket wall front', m), gap('LiOA strip', 'Basket wall R', m), gap('LiOA strip', 'Basket wall back', m)),
-        min(gap('LiOA strip', 'Basket wall front', m), gap('LiOA strip', 'Basket wall R', m), gap('LiOA strip', 'Basket wall back', m)) >= 0.2)
+    add('Strip inside basket', min(gap('LiOA strip', 'Liner inside front', m), gap('LiOA strip', 'Liner inside R', m), gap('LiOA strip', 'Liner inside back', m)),
+        min(gap('LiOA strip', 'Liner inside front', m), gap('LiOA strip', 'Liner inside R', m), gap('LiOA strip', 'Liner inside back', m)) >= 0.2)
     add('Arm vs monitor back', min(gap('Upper arm', 'Rear body', m), gap('Lower spring arm', 'Rear body', m), gap('Lower spring arm', 'Panel shell', m)),
         min(gap('Upper arm', 'Rear body', m), gap('Lower spring arm', 'Rear body', m), gap('Lower spring arm', 'Panel shell', m)) >= 1.0)
     add('Arm vs top shelf', gap('Lower spring arm', 'Top shelf', m), gap('Lower spring arm', 'Top shelf', m) >= 1.0)
@@ -629,6 +800,9 @@ for m in MODES:
     add('Arm vs wall', min(gap('Upper arm', 'Wall', m), gap('Lower spring arm', 'Wall', m)), min(gap('Upper arm', 'Wall', m), gap('Lower spring arm', 'Wall', m)) >= 0.5)
     add('Thigh top to frame rail', RAIL_Y0 - (SEAT + P['thigh_thk']), RAIL_Y0 - (SEAT + P['thigh_thk']) >= 1.0, note='tight: crossed legs will not fit')
     add('Thighs to dock', gap('Thighs', 'Dock', m), gap('Thighs', 'Dock', m) >= 2.0)
+    add('Keyboard to dock edge cap', gap('Keyboard', TOP_LIP, m), gap('Keyboard', TOP_LIP, m) >= 0.5)
+    add('Laptop to dock edge cap', gap('Laptop base', TOP_LIP, m), gap('Laptop base', TOP_LIP, m) >= 0.5)
+    add('Dock to middle shelf', gap('Dock', 'Middle shelf', m), gap('Dock', 'Middle shelf', m) >= 1.0)
     for cb in CABLES:
         L, ex, rm = cb['length'][m], cb['excess'][m], cb['rmin'][m]
         add('Cable %s: routed / rated' % cb['id'], '%.0f / %.0f' % (L, cb['rated']), ex >= 8, note='%.0f cm spare (%s)' % (ex, cb['tie']))
@@ -650,7 +824,7 @@ COMPARE = dict(
 # ---------------------------------------------------------------- transitions (what physically moves)
 STEPS = {
     ('monitor', 'dual'): ['Push the monitor back to the wall (arm, 5.6 cm)', 'Slide the keyboard back under the monitor',
-                          'Take the laptop out of the cubby, open it at the front', 'Mouse stays on the right'],
+                          'Take the laptop out of the cubby, open it at the front, middle of the desk', 'Mouse stays on the right'],
     ('dual', 'laptop'): ['Nothing moves: turn the monitor off'],
     ('laptop', 'notebook'): ['Close the laptop, slide it into the cubby', 'Park the mouse under the monitor', 'Open the notebook'],
     ('notebook', 'monitor'): ['Put the notebook away', 'Pull the keyboard and mouse forward',
@@ -676,7 +850,7 @@ LOADS = dict(seat_cm=round(SEAT, 1), eye_cm=round(EYE_Y, 1), footrest_cm=FOOTRES
              monitor_bottom_above_desk_cm=B_MON, vesa_centre_above_desk_cm=ARM_IK['dual']['vesa_above_desk'],
              arm_load_kg='3.24 of 2.0-9.0', lower_arm_length_cm=round(L1_LEN, 1),
              desktop_load_kg=round(3.24 + 2.5 + 0.6 + 1.98 + 0.69, 1), desktop_rating_kg=22.7,
-             strip_current_A_at_120V=round((240 / 0.9 + 4) / 120, 2))
+             strip_current_A_at_120V=round((240 / 0.9 + 4 + 45) / 120, 2))   # brick at full load, lamp, monitor (45 W assumed max)
 
 # ---------------------------------------------------------------- export
 def jgroup(gid, g):
@@ -686,12 +860,42 @@ spec = dict(arm=dict(ARM, ik=ARM_IK, pole=AXP.tolist(), face=FACE), units='cm', 
             parts=PARTS, cables=CABLES, lamp_on=LAMP_ON, checks=CHECKS, loads=LOADS, compare=COMPARE, transitions=TRANS,
             camera=dict(target=[45, 85, 30], pos=[150, 175, 230]))
 
+
+# ---------------------------------------------------------------- dock mount metrics (for choosing the mount)
+DOCK_KG = 0.6                     # ASSUMPTION: WD19DCS ~0.6 kg (dock body; cables carried by their own ties)
+def mount_metrics():
+    names = ['Dock'] + MOUNT_PARTS
+    pts = [p for nm in names for p in surface_samples(nm, 'monitor', n=6)]
+    lo, hi = v(0, 0, Z0), v(W, TS_Y1, Z1)                          # desk outline (frame + shelves)
+    out = [float(np.linalg.norm(np.maximum(np.maximum(lo - p, p - hi), 0))) for p in pts]
+    vol = sum(float(np.prod(pr['s'])) for nm in MOUNT_PARTS for pr in parts_named(nm) if pr['kind'] == 'box')
+    vis = {}
+    for m in MODES:
+        f = [sdf_fn(b, m) for b in BLOCK + MOUNT_PARTS if parts_named(b) and GROUPS[parts_named(b)[0]['group']]['visible'][m]]
+        sd = lambda q: min(fn(q) for fn in f); seen = 0
+        for q in pts:
+            d = EYE - q; L = np.linalg.norm(d); d = d / L; tt = 0.2; hit = False
+            while tt < L - 1.0:
+                h = sd(q + d * tt)
+                if h < 0.03: hit = True; break
+                tt += max(h, 0.25)
+            seen += 0 if hit else 1
+        vis[m] = round(100.0 * seen / len(pts), 1)
+    # statics: each of the 2 clips carries half the dock; the clip arm that carries it is a cantilever from the
+    # edge wall (5 mm x 3 cm PLA section); load acts at the dock's centre of mass
+    Wn = DOCK_KG * 9.81 / 2; arm = abs(DKX) + 0.25                   # cm from the desk edge face
+    Ixx = 3.0 * 0.5 ** 3 / 12; sigma = Wn * arm * 0.25 / Ixx / 100.0  # N/cm^2 -> MPa
+    return dict(mount=DOCK_MOUNT, protrusion_max_cm=round(max(out), 1), outside_area_samples_pct=round(100.0 * sum(1 for o in out if o > 0.05) / len(out), 1),
+                printed_volume_cm3=round(vol, 1), visible_from_seat_pct=vis, clip_stress_MPa=round(sigma, 2),
+                safety_factor_vs_PLA_creep_10MPa=round(10.0 / max(sigma, 1e-6), 1))
+
 if __name__ == '__main__':
     import os
     here = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(here, 'desk_spec.json'), 'w') as f:
         json.dump(spec, f, separators=(',', ':'))
     print('seat %.1f eye %.1f footrest %.1f' % (SEAT, EYE_Y, FOOTREST))
+    print('MOUNT', json.dumps(mount_metrics()))
     print('compare', json.dumps(COMPARE))
     print('arm', json.dumps(ARM_IK))
     for m in MODES:

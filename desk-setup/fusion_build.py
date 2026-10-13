@@ -214,10 +214,10 @@ def step_cables(S, mode, n_seg=36):
     show_cables(mode)
     return {'mode': mode, 'bodies': total}
 
-def step_save(desc='desk setup', out_dir=None):
+def step_save(desc='desk setup', out_dir=None, name='Desk setup v2.f3d'):
     """Export a local .f3d next to the spec (cloud save is unreliable from the runner)."""
     d = design(); em = d.exportManager
-    fn = os.path.join(out_dir or SPEC_DIR, 'Desk setup v2.f3d')
+    fn = os.path.join(out_dir or SPEC_DIR, name)
     opts = em.createFusionArchiveExportOptions(fn)
     ok = em.execute(opts)
     return {'saved_local': fn, 'ok': bool(ok), 'bytes': os.path.getsize(fn) if os.path.exists(fn) else 0}
@@ -328,7 +328,8 @@ def step_check(S, mode):
 
 VIEWS = {'over': ((260, 260, 420), (48, 70, 30)), 'anim': ((170, 190, 255), (50, 84, 30)), 'front': ((62, 150, 330), (55, 80, 25)),
          'back': ((10, 160, -260), (50, 70, 10)), 'seat': ((62, 132.7, 82.2), (62, 98, 25)),
-         'basket': ((-140, 80, 200), (14, 22, 30))}
+         'basket': ((-140, 80, 200), (14, 22, 30)), 'dock': ((95, 35, 110), (44, 70, 12)),
+         'dockside': ((-60, 55, 60), (40, 70, 12))}
 def step_view(name):
     vp = APP.activeViewport; cam = vp.camera
     eye, tgt = VIEWS[name]
@@ -345,6 +346,111 @@ def step_view(name):
             if b.name == 'Wall': b.isLightBulbOn = (name != 'back')
     vp.refresh()
     return {'view': name}
+
+# ------------------------------------------------------------------ joints (drag in Fusion)
+# As-built joints from the current pose, one subsystem per call. Pose to a mode BEFORE adding
+# joints; afterwards the pose:/animate: steps are not used on that file (joints own the motion).
+MOVERS = {'laptop', 'lid', 'keyboard', 'mouse', 'notebook', 'panel', 'arm_l1', 'arm_l1b', 'arm_l2',
+          'arm_head', 'arm_yoke', 'lamp_yaw', 'lamp_l1', 'lamp_l2', 'lamp_head'}
+def _frame(o):
+    """world origin + local x/y/z axes of an occurrence proxy."""
+    m = o.transform2; a = m.asArray()
+    return [a[3], a[7], a[11]], [a[0], a[4], a[8]], [a[1], a[5], a[9]], [a[2], a[6], a[10]]
+def _cpt(p, name):
+    root = design().rootComponent; ci = root.constructionPoints.createInput()
+    ci.setByPoint(P3(*p)); c = root.constructionPoints.add(ci); c.name = name; c.isLightBulbOn = False; return c
+def _cax(p, d, name):
+    root = design().rootComponent; ci = root.constructionAxes.createInput()
+    ci.setByLine(adsk.core.InfiniteLine3D.create(P3(*p), V3(*d))); c = root.constructionAxes.add(ci)
+    c.name = name; c.isLightBulbOn = False; return c
+def _revolute(name, moving, fixed, p, d, lim=None):
+    """lim = (min_deg, max_deg) relative to the current pose."""
+    root = design().rootComponent
+    old = root.asBuiltJoints.itemByName(name)
+    if old: old.deleteMe()
+    ji = root.asBuiltJoints.createInput(moving, fixed, adsk.fusion.JointGeometry.createByPoint(_cpt(p, name + ' pt')))
+    ji.setAsRevoluteJointMotion(adsk.fusion.JointDirections.CustomJointDirection, _cax(p, d, name + ' axis'))
+    j = root.asBuiltJoints.add(ji); j.name = name
+    if lim:
+        rl = j.jointMotion.rotationLimits
+        rl.isMinimumValueEnabled = True; rl.minimumValue = math.radians(lim[0])
+        rl.isMaximumValueEnabled = True; rl.maximumValue = math.radians(lim[1])
+    return j
+def _rigid(name, moving, fixed, p):
+    root = design().rootComponent
+    old = root.asBuiltJoints.itemByName(name)
+    if old: old.deleteMe()
+    ji = root.asBuiltJoints.createInput(moving, fixed, adsk.fusion.JointGeometry.createByPoint(_cpt(p, name + ' pt')))
+    ji.setAsRigidJointMotion(); j = root.asBuiltJoints.add(ji); j.name = name; return j
+
+def step_ground():
+    """Ground everything that does not move by hand (desk, room, dock, cables...)."""
+    root = design().rootComponent; out = []
+    for i in range(root.occurrences.count):
+        o = root.occurrences.item(i); g = o.component.name.split(' :: ')[0]
+        o.isGrounded = g not in MOVERS and not g.startswith('lamp_') or g == 'lamp_base'
+        if o.isGrounded: out.append(g)
+    return {'grounded': len(out)}
+
+def step_joints(S, which):
+    om = occ_map(); root = design().rootComponent; made = []
+    if which == 'arm':
+        A = {'pitch_min': -35.0, 'pitch_max': 29.5}          # NB A5 / FlowLift Pro upper-arm range
+        p1, _, y1, _ = _frame(om['arm_l1'])
+        made.append(_revolute('Arm swivel at pole', om['arm_l1'], om['arm'], p1, y1).name)
+        # elbow yoke: same place as the upper arm but yaw only, so yaw and pitch are separate joints
+        E, x2, y2, z2 = _frame(om['arm_l2'])
+        pitch = math.degrees(math.asin(max(-1, min(1, x2[1]))))
+        h = math.hypot(x2[0], x2[2]); xy = [x2[0] / h, 0, x2[2] / h]; zy = [-xy[2], 0, xy[0]]   # x cross y
+        if 'arm_yoke' not in om:
+            occ = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+            occ.component.name = 'arm_yoke :: Arm elbow yoke'
+            tb = adsk.fusion.TemporaryBRepManager.get()
+            cyl = tb.createCylinderOrCone(P3(0, -1.2, 0), 2.0, P3(0, 1.2, 0), 2.0)
+            bb = occ.component.bRepBodies.add(cyl); bb.name = 'Elbow cap'
+            bb.appearance = appearance('Plastic - Matte (Black)', '#1b1b1b')
+            om = occ_map()
+        m = adsk.core.Matrix3D.create()
+        m.setWithArray([xy[0], 0, zy[0], E[0], xy[1], 1, zy[1], E[1], xy[2], 0, zy[2], E[2], 0, 0, 0, 1])
+        om['arm_yoke'].transform2 = m
+        made.append(_revolute('Arm elbow swivel', om['arm_yoke'], om['arm_l1'], E, [0, 1, 0]).name)
+        made.append(_revolute('Arm height (spring)', om['arm_l2'], om['arm_yoke'], E, zy,
+                              (A['pitch_min'] - pitch, A['pitch_max'] - pitch)).name)
+        H, _, yh, _ = _frame(om['arm_head'])
+        jt = _revolute('Arm head level', om['arm_head'], om['arm_l2'], H, zy)
+        made.append(jt.name)
+        # spring arms are parallelograms: the head stays level when the arm goes up or down
+        try:
+            jl = root.asBuiltJoints.itemByName('Arm height (spring)')
+            mi = root.motionLinks.createInput(jl, jt)
+            mi.valueOne = adsk.core.ValueInput.createByString('10 deg'); mi.valueTwo = adsk.core.ValueInput.createByString('-10 deg')
+            root.motionLinks.add(mi); made.append('motion link: head stays level')
+        except Exception as e:
+            made.append('motion link failed: %s' % e)
+        made.append(_revolute('Monitor swivel', om['panel'], om['arm_head'], H, [0, 1, 0], (-90, 90)).name)
+        made.append(_rigid('Arm link rigid', om['arm_l1b'], om['arm_l1'], p1).name)
+    elif which == 'lid':
+        P, x, _, _ = _frame(om['lid'])
+        made.append(_revolute('Laptop hinge', om['lid'], om['laptop'], P, x).name)
+    elif which == 'lamp':
+        p, _, y, _ = _frame(om['lamp_yaw'])
+        made.append(_revolute('Lamp base swivel', om['lamp_yaw'], om['lamp_base'], p, y).name)
+        p, x, _, _ = _frame(om['lamp_l1'])
+        made.append(_revolute('Lamp shoulder', om['lamp_l1'], om['lamp_yaw'], p, x).name)
+        p, x, _, _ = _frame(om['lamp_l2'])
+        made.append(_revolute('Lamp elbow', om['lamp_l2'], om['lamp_l1'], p, x).name)
+        p, _, _, _ = _frame(om['lamp_head']); _, x, _, _ = _frame(om['lamp_l2'])
+        made.append(_revolute('Lamp head tilt', om['lamp_head'], om['lamp_l2'], p, x).name)
+    else:
+        raise ValueError(which)
+    APP.activeViewport.refresh()
+    return {'joints': which, 'made': made}
+
+def step_joint_list():
+    root = design().rootComponent; out = []
+    for i in range(root.asBuiltJoints.count):
+        j = root.asBuiltJoints.item(i); out.append([j.name, j.jointMotion.jointType, bool(j.healthState == 0)])
+    return {'as_built': out, 'links': root.motionLinks.count if hasattr(root, 'motionLinks') else '-'}
 
 SPEC_DIR = None
 def run_step(spec_path, step, out_dir=None):
@@ -363,4 +469,8 @@ def run_step(spec_path, step, out_dir=None):
     if kind == 'pose': return step_pose(S, args[0])
     if kind == 'animate': return step_animate(S, args[0], args[1], out_dir=(os.path.join(SPEC_DIR, 'frames') if len(args) > 2 and args[2] == 'save' else None))
     if kind == 'check': return step_check(S, args[0])
+    if kind == 'ground': return step_ground()
+    if kind == 'joints': return step_joints(S, args[0])
+    if kind == 'jointlist': return step_joint_list()
+    if kind == 'savejoints': return step_save(out_dir=None, name='Desk setup v2 joints.f3d')
     raise ValueError(step)
